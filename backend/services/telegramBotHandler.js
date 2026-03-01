@@ -2,6 +2,7 @@ import axios from "axios";
 import crypto from "crypto";
 import AuthSession from "../model/authSession.js";
 import User from "../model/user.js";
+import Settings from "../model/settings.js";
 import { parseReferralCode, applyReferral } from "../utils/referral.js";
 
 const TELEGRAM_API = "https://api.telegram.org/bot";
@@ -416,6 +417,95 @@ export const handleStartCommand = async (message) => {
 };
 
 /**
+ * Handle /play command — show available stake games as buttons
+ */
+const handlePlayCommand = async (message) => {
+  const chatId = message.chat.id;
+  const frontendUrl = process.env.FRONTEND_URL || "https://sheqaygames.com";
+
+  try {
+    const settings = await Settings.getSettings();
+    const stakes = settings.systemGames?.gameStakes || [10, 20, 50, 100];
+
+    const buttons = stakes.map((stake) => ([{
+      text: `🎮 ${stake} Point Game`,
+      web_app: { url: `${frontendUrl}?autoJoin=${stake}` },
+    }]));
+
+    const keyboard = { inline_keyboard: buttons };
+
+    await sendBotMessage(
+      chatId,
+      "🎯 <b>Choose a Game</b>\n\nPick a stake to join the next available game:",
+      { reply_markup: keyboard }
+    );
+  } catch (err) {
+    console.error("[/play] Error:", err.message);
+    const keyboard = {
+      inline_keyboard: [[{ text: "🎮 Open Game", web_app: { url: frontendUrl } }]],
+    };
+    await sendBotMessage(chatId, "🎮 Click below to play:", { reply_markup: keyboard });
+  }
+};
+
+/**
+ * Handle /deposit command — open the wallet deposit flow
+ */
+const handleDepositCommand = async (message) => {
+  const chatId = message.chat.id;
+  const frontendUrl = process.env.FRONTEND_URL || "https://sheqaygames.com";
+
+  const keyboard = {
+    inline_keyboard: [[{
+      text: "💰 Open Wallet & Deposit",
+      web_app: { url: `${frontendUrl}?action=deposit` },
+    }]],
+  };
+
+  await sendBotMessage(
+    chatId,
+    "💰 <b>Deposit Funds</b>\n\nClick the button below to open your wallet and make a deposit:",
+    { reply_markup: keyboard }
+  );
+};
+
+/**
+ * Handle /withdraw command — open the wallet withdrawal flow
+ */
+const handleWithdrawCommand = async (message) => {
+  const chatId = message.chat.id;
+  const frontendUrl = process.env.FRONTEND_URL || "https://sheqaygames.com";
+
+  const keyboard = {
+    inline_keyboard: [[{
+      text: "💸 Open Wallet & Withdraw",
+      web_app: { url: `${frontendUrl}?action=withdraw` },
+    }]],
+  };
+
+  await sendBotMessage(
+    chatId,
+    "💸 <b>Withdraw Funds</b>\n\nClick the button below to open your wallet and request a withdrawal:",
+    { reply_markup: keyboard }
+  );
+};
+
+/**
+ * Handle /support command — show support info
+ */
+const handleSupportCommand = async (message) => {
+  const chatId = message.chat.id;
+
+  await sendBotMessage(
+    chatId,
+    "🆘 <b>Support</b>\n\n" +
+    "Need help? Contact our support team:\n\n" +
+    "📩 Send us a message describing your issue and we'll get back to you as soon as possible.\n\n" +
+    "⏰ Support hours: 24/7"
+  );
+};
+
+/**
  * Process incoming Telegram bot update
  */
 export const processBotUpdate = async (update) => {
@@ -620,15 +710,35 @@ export const processBotUpdate = async (update) => {
         return;
       }
 
-      // Handle /start command
+      // Route commands
       if (text.startsWith("/start")) {
         console.log("🚀 Processing /start command");
         await handleStartCommand(update.message);
         return;
       }
+      if (text.startsWith("/play")) {
+        console.log("🎮 Processing /play command");
+        await handlePlayCommand(update.message);
+        return;
+      }
+      if (text.startsWith("/deposit")) {
+        console.log("💰 Processing /deposit command");
+        await handleDepositCommand(update.message);
+        return;
+      }
+      if (text.startsWith("/withdraw")) {
+        console.log("💸 Processing /withdraw command");
+        await handleWithdrawCommand(update.message);
+        return;
+      }
+      if (text.startsWith("/support")) {
+        console.log("🆘 Processing /support command");
+        await handleSupportCommand(update.message);
+        return;
+      }
 
       // Ignore other messages
-      console.log("⚠️ Ignoring non-/start message");
+      console.log("⚠️ Ignoring unrecognized message");
       return;
     }
 
@@ -774,6 +884,33 @@ export const handleMiniAppBotStartCommand = async (message) => {
   } catch (error) {
     console.error("❌ [Mini App Bot] Error in handleStartCommand:", error);
     throw error;
+  }
+};
+
+/**
+ * Register bot commands with Telegram so they appear in the command menu.
+ * Call once at server startup.
+ */
+export const registerBotCommands = async () => {
+  const token = getAuthBotToken();
+  if (!token) {
+    console.error("[bot-commands] AUTH_BOT_TOKEN not configured, skipping command registration");
+    return;
+  }
+
+  const commands = [
+    { command: "play", description: "Join a bingo game" },
+    { command: "deposit", description: "Deposit funds to your wallet" },
+    { command: "withdraw", description: "Withdraw funds from your wallet" },
+    { command: "support", description: "Get help and support" },
+    { command: "start", description: "Start the bot" },
+  ];
+
+  try {
+    await axios.post(`${TELEGRAM_API}${token}/setMyCommands`, { commands });
+    console.log("✅ [bot-commands] Registered bot commands with Telegram");
+  } catch (err) {
+    console.error("[bot-commands] Failed to register commands:", err.response?.data || err.message);
   }
 };
 

@@ -33,6 +33,7 @@ import adRoutes from "./route/ad.route.js";
 import notificationRoutes from "./route/notification.route.js";
 import referralRoutes from "./route/referral.route.js";
 import { initBotInjector } from "./services/botInjector.js";
+import { registerBotCommands } from "./services/telegramBotHandler.js";
 
 connectDB();
 
@@ -102,6 +103,9 @@ io.on("connection", (socket) => {
 
 // Initialize bot injector service (monitors waiting rooms and injects bots)
 initBotInjector(io);
+
+// Register Telegram bot commands on startup
+registerBotCommands();
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

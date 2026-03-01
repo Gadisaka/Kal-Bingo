@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { socketClient } from "../sockets/socket";
 import WalletBadge from "../components/WalletBadge";
 import BottomNavbar from "../components/BottomNavbar";
@@ -28,12 +28,14 @@ const DEFAULT_SETTINGS = {
 export default function GameLobby() {
   const { user } = useAuth();
   const [rooms, setRooms] = useState([]);
-  const [joinLoading, setJoinLoading] = useState(null); // betAmount being joined
-  const [countdowns, setCountdowns] = useState({}); // roomId -> secondsLeft
-  const [gameSettings, setGameSettings] = useState(DEFAULT_SETTINGS); // Dynamic game settings
+  const [joinLoading, setJoinLoading] = useState(null);
+  const [countdowns, setCountdowns] = useState({});
+  const [gameSettings, setGameSettings] = useState(DEFAULT_SETTINGS);
   const socket = useMemo(() => socketClient.instance, []);
   const navigate = useNavigate();
   const joinTimeoutRef = useRef(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const autoJoinFired = useRef(false);
 
   // Extract betAmounts and maxPlayers from settings
   const betAmounts = gameSettings.gameStakes;
@@ -234,18 +236,14 @@ export default function GameLobby() {
     };
   }, [socket, navigate, betAmounts]);
 
-  const joinRoom = (betAmount) => {
+  const joinRoom = useCallback((betAmount) => {
     if (!user) return alert("Please login to join a room");
-    console.log("🎮 Attempting to join/create room with bet:", betAmount);
-    console.log("User data:", { id: user.id, name: user.name });
     setJoinLoading(betAmount);
     socket.emit("system:joinRoom", {
       betAmount,
       userId: user.id,
       username: user.name,
     });
-    console.log("Emitted system:joinRoom, waiting for response...");
-    // Fallback timeout in case server does not respond
     if (joinTimeoutRef.current) {
       clearTimeout(joinTimeoutRef.current);
     }
@@ -253,12 +251,32 @@ export default function GameLobby() {
       setJoinLoading(null);
       alert("Join request timed out. Please try again.");
     }, 8000);
-  };
+  }, [user, socket]);
 
   const leaveRoom = () => {
     if (!user) return;
     socket.emit("system:leaveRoom", { userId: user.id });
   };
+
+  // Auto-join from Telegram /play command (?autoJoin=<stake>)
+  useEffect(() => {
+    const autoJoinStake = searchParams.get("autoJoin");
+    if (!autoJoinStake || !user || autoJoinFired.current) return;
+
+    const stake = Number(autoJoinStake);
+    if (!stake || !betAmounts.includes(stake)) return;
+
+    // Wait for rooms to load so we know if the stake room is joinable
+    const room = rooms.find((r) => r.betAmount === stake);
+    if (!room) return; // rooms haven't loaded yet — effect will re-run when they do
+
+    autoJoinFired.current = true;
+    setSearchParams({}, { replace: true }); // clean the URL
+
+    if (room.status === "waiting") {
+      joinRoom(stake);
+    }
+  }, [searchParams, user, betAmounts, rooms, setSearchParams, joinRoom]);
 
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(() => {
