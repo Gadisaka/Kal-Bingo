@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #1e40af;
+  --color-secondary: #1e293b;
+}
+
+/* Restore base styles if needed, v4 includes a reset */
+body {
+  @apply bg-gray-50 text-gray-900;
+  font-family: "Inter", system-ui, sans-serif;
+}

@@ -1,0 +1,108 @@
+@import url("https://fonts.googleapis.com/css2?family=Acme&display=swap");
+@import "tailwindcss";
+
+@import url("https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap");
+
+.font-nunito {
+  font-family: "Nunito", sans-serif;
+}
+
+@keyframes stampEffect {
+  0% {
+    transform: scale(2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.animate-stamp {
+  animation: stampEffect 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-40px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.acme-regular {
+  font-family: "Acme", sans-serif;
+  /* font-weight: 400; */
+  /* font-style: normal; */
+}
+
+body {
+  /* font-family: "Acme", sans-serif; */
+  background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+.bingo-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.bingo-ball {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.12;
+  filter: blur(1px);
+  background: radial-gradient(circle at 60% 40%, #bae6fd 60%, #38bdf8 100%);
+}
+.bingo-ball.blue {
+  background: radial-gradient(circle at 60% 40%, #7dd3fc 60%, #0ea5e9 100%);
+}
+.bingo-ball.pink {
+  background: radial-gradient(circle at 60% 40%, #a5b4fc 60%, #2563eb 100%);
+}
+.bingo-star {
+  position: absolute;
+  color: #facc15;
+  font-size: 2.5rem;
+  opacity: 0.18;
+  filter: blur(0.5px);
+}
+
+.cute-btn {
+  @apply rounded-full px-6 py-2 font-bold shadow-md transition bg-sky-400 hover:bg-sky-500 text-white text-lg flex items-center gap-2;
+}
+.cute-btn-blue {
+  @apply bg-sky-400 hover:bg-sky-500;
+}
+.cute-btn-green {
+  @apply bg-teal-400 hover:bg-teal-500;
+}
+.cute-btn-pink {
+  @apply bg-blue-300 hover:bg-blue-400 text-blue-900;
+}
+.cute-card {
+  @apply rounded-2xl bg-white/80 shadow-lg p-4 border-2 border-sky-100;
+}
+.bingo-title {
+  @apply text-3xl md:text-5xl font-extrabold text-sky-500 drop-shadow-lg flex items-center gap-2;
+}
+.bingo-subtitle {
+  @apply text-lg md:text-2xl text-sky-400 font-semibold mb-2;
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+}
