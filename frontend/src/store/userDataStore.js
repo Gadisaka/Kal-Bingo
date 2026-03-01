@@ -7,7 +7,6 @@ export const useUserDataStore = create((set, get) => ({
   balance: 0,
   bonus: 0,
   points: 0,
-  availableSpins: 0,
   currentStreak: 0,
   streakTarget: 7,
   config: null,
@@ -37,7 +36,6 @@ export const useUserDataStore = create((set, get) => ({
       const res = await axios.get(`${API_URL}/api/user/points`);
       const data = {
         points: Number(res.data?.points || 0),
-        availableSpins: Number(res.data?.spins?.available || 0),
         bonus: Number(res.data?.bonus || 0),
         currentStreak: Number(res.data?.streak?.current || 0),
         streakTarget: Number(res.data?.config?.streak_target_days || 7),
@@ -62,7 +60,6 @@ export const useUserDataStore = create((set, get) => ({
           .fetchPoints()
           .catch(() => ({
             points: 0,
-            availableSpins: 0,
             bonus: 0,
             currentStreak: 0,
             streakTarget: 7,
@@ -93,11 +90,6 @@ export const useUserDataStore = create((set, get) => ({
   updatePoints: (amount) =>
     set((state) => ({ points: Math.max(0, state.points + amount) })),
 
-  updateSpins: (amount) =>
-    set((state) => ({
-      availableSpins: Math.max(0, state.availableSpins + amount),
-    })),
-
   setStreak: (streak) => set({ currentStreak: streak }),
 
   // Reset state (useful for logout)
@@ -106,7 +98,6 @@ export const useUserDataStore = create((set, get) => ({
       balance: 0,
       bonus: 0,
       points: 0,
-      availableSpins: 0,
       currentStreak: 0,
       streakTarget: 7,
       config: null,

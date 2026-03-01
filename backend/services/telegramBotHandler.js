@@ -428,7 +428,7 @@ const handlePlayCommand = async (message) => {
     const stakes = settings.systemGames?.gameStakes || [10, 20, 50, 100];
 
     const buttons = stakes.map((stake) => ([{
-      text: `🎮 ${stake} Point Game`,
+      text: `🎮 ${stake} Birr Game`,
       web_app: { url: `${frontendUrl}?autoJoin=${stake}` },
     }]));
 

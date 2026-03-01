@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 import User from "../model/user.js";
 import PointTransaction from "../model/pointTransaction.js";
 import SystemConfig from "../model/systemConfig.js";
-import { incrementLeaderboardPoints } from "./leaderboard.js";
 
 /**
  * Atomically add points to a user and record the transaction.
@@ -45,11 +44,6 @@ export const addPoints = async (userId, amount, type, meta = {}) => {
       );
 
       result = { balance: user.points, transaction: tx };
-    });
-    
-    // Update leaderboard stats asynchronously (non-blocking)
-    incrementLeaderboardPoints(userId, amount).catch((err) => {
-      console.error("[leaderboard] Failed to update points:", err.message);
     });
     
     return result;

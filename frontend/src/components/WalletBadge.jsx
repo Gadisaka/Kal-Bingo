@@ -46,7 +46,7 @@ export default function WalletBadge() {
 
   const total = Number(balance || 0) + Number(bonus || 0);
   const display = show
-    ? `pts ${Math.trunc(Number(total || 0)).toLocaleString()}`
+    ? `Br ${Math.trunc(Number(total || 0)).toLocaleString()}`
     : "••••••";
 
   if (!user) return null;

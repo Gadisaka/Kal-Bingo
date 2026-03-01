@@ -88,7 +88,6 @@ export default function InviteModal() {
     {
       points: "Token",
       balance: "ETB",
-      spins: "Spins",
       token: "Token",
     }[rewardType] || "Points";
 

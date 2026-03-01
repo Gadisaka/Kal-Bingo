@@ -136,7 +136,6 @@ export default function WalletModal() {
   const [showBalance, setShowBalance] = useState(true);
   const [balance, setBalance] = useState(0);
   const [bonus, setBonus] = useState(0);
-  const [availableSpins, setAvailableSpins] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [loadingTx, setLoadingTx] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -164,14 +163,6 @@ export default function WalletModal() {
     } catch (e) {
       console.error("Failed to fetch wallet", e);
       setBalance(Number(user?.balance || 0));
-    }
-
-    // Fetch spins
-    try {
-      const resPoints = await axios.get(`${API_URL}/api/user/points`);
-      setAvailableSpins(Number(resPoints.data?.spins?.available || 0));
-    } catch (e) {
-      console.error("Failed to fetch spin data", e);
     }
 
     // Fetch transactions
@@ -267,7 +258,7 @@ export default function WalletModal() {
 
             <div className="flex justify-between items-start mb-2 relative z-10">
               <span className="text-slate-400 text-sm font-medium">
-                Points Balance (Withdrawable)
+                Balance (Withdrawable)
               </span>
               <button
                 onClick={() => setShowBalance(!showBalance)}
@@ -282,7 +273,7 @@ export default function WalletModal() {
             </div>
 
             <div className="text-4xl font-black text-white mb-8 relative z-10 tracking-tight">
-              <span className="text-2xl text-slate-500 mr-1">pts</span>
+              <span className="text-2xl text-slate-500 mr-1">Br</span>
               {showBalance ? formatWhole(balance) : "****"}
             </div>
 
@@ -317,34 +308,15 @@ export default function WalletModal() {
             <div className="relative z-10">
               <div className="flex justify-between items-start mb-2">
                 <span className="text-orange-200/80 text-sm font-medium">
-                  Bonus Points
+                  Bonus Balance
                 </span>
                 <div className="bg-orange-500/20 p-1.5 rounded-lg">
                   <Gift className="w-4 h-4 text-orange-400" />
                 </div>
               </div>
               <div className="text-3xl font-bold text-white mb-2 tracking-tight">
-                <span className="text-xl text-orange-500/60 mr-1">pts</span>
+                <span className="text-xl text-orange-500/60 mr-1">Br</span>
                 {showBalance ? formatWhole(bonus) : "****"}
-              </div>
-            </div>
-          </div>
-
-          {/* Spin Bonus Card */}
-          <div className="bg-gradient-to-br from-[#13221f] to-[#0b1412] rounded-3xl p-6 border border-emerald-500/20 relative overflow-hidden group">
-            <div className="absolute -right-6 -top-6 text-emerald-500/10 transform group-hover:scale-110 transition-transform duration-700">
-              <ArrowDownCircle className="w-32 h-32" />
-            </div>
-            <div className="relative z-10">
-              <div className="flex justify-between items-start mb-2">
-                <div className="bg-emerald-500/20 p-1.5 rounded-lg">
-                  <Gift className="w-4 h-4 text-emerald-400" />
-                </div>
-              </div>
-
-              <div className="text-3xl text-emerald-200/80">
-                Available spins:{" "}
-                <span className="font-bold">{availableSpins}</span>
               </div>
             </div>
           </div>

@@ -22,10 +22,7 @@ import subAdminRoutes from "./route/subAdmin.route.js";
 import revenueRoutes from "./route/revenue.route.js";
 
 import { initRoomCleanupCron } from "./cron/roomCleanup.js";
-import { initLeaderboardResetCron } from "./cron/leaderboardReset.js";
 import pointsRoutes from "./route/points.route.js";
-import spinRoutes from "./route/spin.route.js";
-import leaderboardRoutes from "./route/leaderboard.route.js";
 import adminRoutes from "./route/admin.route.js";
 import botRoutes from "./route/bot.route.js";
 import webhookRoutes from "./route/webhook.route.js";
@@ -55,8 +52,6 @@ app.use("/api/sub-admins", subAdminRoutes);
 app.use("/api/revenues", revenueRoutes);
 
 app.use("/api/user", pointsRoutes);
-app.use("/api/spins", spinRoutes);
-app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/bots", botRoutes);
 app.use("/api/webhook", webhookRoutes);
@@ -86,7 +81,6 @@ loadSystemRoomsFromDB()
 
 // Initialize cron jobs
 initRoomCleanupCron();
-initLeaderboardResetCron();
 
 // Initialize periodic room cleanup (empty waiting rooms)
 initPeriodicRoomCleanup(io);

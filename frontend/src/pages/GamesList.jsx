@@ -25,15 +25,12 @@ import ludoImg from "../assets/ludo.jpg";
 import BottomNavbar from "../components/BottomNavbar";
 import WalletBadge from "../components/WalletBadge";
 import DailyStreakModal from "../components/DailyStreakModal";
-import LeaderboardWidget from "../components/LeaderboardWidget";
-import gift from "../assets/image.png";
 import fireIcon from "../assets/3dicons-fire-dynamic-color.png";
 import linkIcon from "../assets/3dicons-link-iso-premium.png";
-import medalIcon from "../assets/3dicons-medal-dynamic-color.png";
 import { useAuth } from "../context/AuthContext";
 import { useInviteStore } from "../store/inviteStore";
 import { useUserDataStore } from "../store/userDataStore";
-import { X, ExternalLink, Loader2 } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import PhoneVerificationModal from "../components/auth/PhoneVerificationModal";
 
 const StreakCelebration = ({ streak, onComplete }) => {
@@ -107,7 +104,6 @@ export default function GamesPage() {
   const { currentStreak, streakTarget, fetchAll, fetchPoints } =
     useUserDataStore();
   const [isStreakModalOpen, setIsStreakModalOpen] = useState(false);
-  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
   const prevStreakRef = useRef(0);
 
@@ -385,7 +381,7 @@ export default function GamesPage() {
           )}
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-4 gap-3 sm:gap-6 mb-12 max-w-lg mx-auto px-2">
+          <div className="grid grid-cols-2 gap-3 sm:gap-6 mb-12 max-w-lg mx-auto px-2">
             {[
               {
                 name: "Daily",
@@ -394,12 +390,6 @@ export default function GamesPage() {
                 badge: currentStreak > 0 ? currentStreak : null,
               },
               { name: "Invite", icon: linkIcon, action: openInvite },
-              { name: "Spins", icon: gift, action: () => navigate("/spin") },
-              {
-                name: "Leaderboard",
-                icon: medalIcon,
-                action: () => setIsLeaderboardOpen(true),
-              },
             ].map((item) => (
               <button
                 key={item.name}
@@ -495,28 +485,6 @@ export default function GamesPage() {
         </div>
       </main>
 
-      {/* Floating Action Button - Moved up to clear navbar */}
-      <button
-        onClick={() => {
-          if (!user) {
-            handleBotAuth();
-            return;
-          }
-          navigate("/spin");
-        }}
-        className="fixed right-8 bottom-24 z-40 w-20 h-20 flex items-center justify-center hover:scale-110 transition-transform group cursor-pointer"
-      >
-        {/* Glow Effect */}
-        <div className="absolute inset-0 bg-yellow-500/30 blur-[20px] rounded-full animate-pulse" />
-
-        <img
-          className="relative w-full h-full object-contain drop-shadow-[0_0_15px_rgba(234,179,8,0.6)]"
-          style={{ animation: "shake-random 3s ease-in-out infinite" }}
-          src={gift}
-          alt="gift"
-        />
-      </button>
-
       {user && <BottomNavbar />}
 
       {/* Bot Auth Modal */}
@@ -583,26 +551,6 @@ export default function GamesPage() {
         />
       )}
 
-      {/* Leaderboard Modal */}
-      {isLeaderboardOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-900 rounded-2xl border border-white/10 p-6 shadow-2xl">
-            <button
-              onClick={() => setIsLeaderboardOpen(false)}
-              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <div className="mb-4">
-              <h2 className="text-2xl font-bold text-white">Leaderboard</h2>
-              <p className="text-sm text-slate-400 mt-1">
-                Compete with players and climb the ranks!
-              </p>
-            </div>
-            <LeaderboardWidget />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

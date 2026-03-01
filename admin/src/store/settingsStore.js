@@ -21,11 +21,9 @@ const useSettingsStore = create((set, get) => ({
       winCut: 10,
       hostShare: 5,
     },
-    spin: {
-      enabled: false,
-    },
-    bonus: {
-      enabled: false,
+    welcomeBonus: {
+      enabled: true,
+      amount: 50,
     },
   },
   spinConfig: {
@@ -181,7 +179,24 @@ const useSettingsStore = create((set, get) => ({
     await get().updateSettings({ userGames: userGamesSettings });
   },
 
-  // Spin Config Actions
+  updateWelcomeBonusField: (fieldName, value) => {
+    set((state) => ({
+      settings: {
+        ...state.settings,
+        welcomeBonus: {
+          ...state.settings.welcomeBonus,
+          [fieldName]: value,
+        },
+      },
+    }));
+  },
+
+  saveWelcomeBonusSettings: async () => {
+    const welcomeBonus = get().settings.welcomeBonus;
+    await get().updateSettings({ welcomeBonus });
+  },
+
+  // Spin Config Actions (legacy — kept for compatibility)
   fetchSpinConfig: async () => {
     set({ loading: true, error: null });
     try {

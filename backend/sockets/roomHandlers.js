@@ -1026,7 +1026,6 @@ export function registerRoomHandlers(io, socket) {
           socket.emit("streak:bonus", {
             bonusPoints: streakResult.bonusPoints,
             target: streakResult.target,
-            spinsAwarded: streakResult.spinsAwarded,
           });
         }
       } catch (streakErr) {

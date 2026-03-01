@@ -38,11 +38,7 @@ export default function StreakIndicator() {
     if (!systemSocket || !user) return;
     const handler = (data) => {
       const pointsMsg = `+${data?.bonusPoints || 0} tokens`;
-      const spinMsg =
-        data?.spinsAwarded && data.spinsAwarded > 0
-          ? ` +${data.spinsAwarded} spin`
-          : "";
-      setToastMsg(`Streak bonus unlocked! ${pointsMsg}${spinMsg}`);
+      setToastMsg(`Streak bonus unlocked! ${pointsMsg}`);
       setShowToast(true);
       setCurrent(0);
       setTimeout(() => setShowToast(false), 4000);

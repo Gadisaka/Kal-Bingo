@@ -24,9 +24,10 @@ const settingsSchema = new mongoose.Schema(
     spin: {
       enabled: { type: Boolean, default: false },
     },
-    // Bonus Settings (for future use)
-    bonus: {
-      enabled: { type: Boolean, default: false },
+    // Welcome Bonus — non-withdrawable bonus given to new users on registration
+    welcomeBonus: {
+      enabled: { type: Boolean, default: true },
+      amount: { type: Number, default: 50 },
     },
     // Deposit Account Settings
     depositAccounts: {

@@ -12,7 +12,6 @@ import WalletModal from "./components/WalletModal";
 import ProfileModal from "./components/ProfileModal";
 import InviteModal from "./components/InviteModal";
 import BingoGame from "./example";
-import SpinPage from "./pages/SpinPage";
 import TestAudioComponent from "./components/TestAudioComponent";
 
 function App() {
@@ -52,14 +51,6 @@ function App() {
             }
           />
           <Route path="/auth" element={<AuthPage />} />
-          <Route
-            path="/spin"
-            element={
-              <ProtectedRoute>
-                <SpinPage />
-              </ProtectedRoute>
-            }
-          />
         </Routes>
       </Router>
     </AuthProvider>

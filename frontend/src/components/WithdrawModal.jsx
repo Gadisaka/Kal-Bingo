@@ -244,9 +244,9 @@ export default function WithdrawModal({
                 <p className="text-slate-400 text-sm mb-1">Available Balance</p>
                 <p className="text-2xl font-bold text-white">
                   {availableBalance.toLocaleString()}{" "}
-                  <span className="text-slate-500 text-lg">pts</span>
+                  <span className="text-slate-500 text-lg">Br</span>
                 </p>
-                <p className="text-slate-500 text-xs mt-1">1 point = 1 birr</p>
+                <p className="text-slate-500 text-xs mt-1">1 Birr = 1 ETB</p>
               </div>
 
               {/* Pending Warning */}

@@ -226,7 +226,7 @@ export default function DepositModal({ isOpen, onClose, onSuccess }) {
                         {depositSettings.maxAmount.toLocaleString()} Birr
                       </p>
                       <span className="text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full whitespace-nowrap">
-                        1 point = 1 birr
+                        1 Birr = 1 ETB
                       </span>
                     </div>
                   </div>

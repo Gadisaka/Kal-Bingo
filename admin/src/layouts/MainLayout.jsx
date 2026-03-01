@@ -15,7 +15,6 @@ import {
   Menu,
   X,
   BarChart3,
-  Trophy,
   Bot,
 } from "lucide-react";
 import clsx from "clsx";
@@ -43,7 +42,6 @@ const MainLayout = () => {
     },
     { name: "Sub Admin", path: "/sub-admin", icon: UserCog, role: "admin" },
     { name: "Revenue", path: "/revenue", icon: BarChart3 },
-    { name: "Leaderboard", path: "/leaderboard", icon: Trophy },
     { name: "Bot Management", path: "/bots", icon: Bot },
     { name: "Notifications", path: "/notifications", icon: Bell },
     { name: "Ads", path: "/ads", icon: Megaphone },

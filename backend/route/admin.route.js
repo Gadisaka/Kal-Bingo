@@ -1,11 +1,4 @@
 import express from "express";
-import {
-  updateLeaderboardConfig,
-  getLeaderboardConfig,
-  getLiveLeaderboard,
-  getSpinConfig,
-  updateSpinConfig,
-} from "../controller/leaderboard.controller.js";
 import { verifyToken } from "../controller/auth.controller.js";
 import {
   getAllDeposits,
@@ -22,10 +15,8 @@ import {
 
 const router = express.Router();
 
-// All admin routes require authentication
 router.use(verifyToken);
 
-// Middleware to check admin role (allows both admin and subadmin)
 const requireAdmin = (req, res, next) => {
   if (req.user && (req.user.role === "admin" || req.user.role === "subadmin")) {
     next();
@@ -36,15 +27,6 @@ const requireAdmin = (req, res, next) => {
     });
   }
 };
-
-// Leaderboard configuration routes
-router.get("/leaderboard-config", requireAdmin, getLeaderboardConfig);
-router.put("/leaderboard-config", requireAdmin, updateLeaderboardConfig);
-router.get("/leaderboard/live", requireAdmin, getLiveLeaderboard);
-
-// Spin configuration routes
-router.get("/spin-config", requireAdmin, getSpinConfig);
-router.put("/spin-config", requireAdmin, updateSpinConfig);
 
 // Deposit management routes
 router.get("/deposits", requireAdmin, getAllDeposits);

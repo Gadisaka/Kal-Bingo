@@ -13,7 +13,6 @@
     "seed:all": "node scripts/seedAll.js",
     "seed:wallets": "node scripts/seedWallets.js",
     "seed:admin": "node scripts/seedAdmin.js",
-    "seed:spins": "node scripts/seedSpins.js",
     "seed:bots": "node scripts/seedBots.js",
     "seed:bot-config": "node scripts/seedBotConfig.js",
     "fix:telegram-index": "node scripts/fixTelegramIdIndex.js",

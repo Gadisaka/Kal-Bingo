@@ -72,12 +72,12 @@ export const updateSettings = async (req, res) => {
         };
         settings.markModified("spin");
       }
-      if (req.body.bonus) {
-        settings.bonus = {
-          ...settings.bonus,
-          ...req.body.bonus,
+      if (req.body.welcomeBonus) {
+        settings.welcomeBonus = {
+          ...settings.welcomeBonus,
+          ...req.body.welcomeBonus,
         };
-        settings.markModified("bonus");
+        settings.markModified("welcomeBonus");
       }
 
       await settings.save();

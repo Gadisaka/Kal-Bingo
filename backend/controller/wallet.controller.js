@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Wallet from "../model/wallet.js";
 import User from "../model/user.js";
 import WalletTransaction from "../model/walletTransaction.js";
+import Settings from "../model/settings.js";
 
 const normalizePhone = (phone) => String(phone || "").trim();
 
@@ -39,11 +40,35 @@ export const getMyWallet = async (req, res) => {
       (req.user.wallet ? await Wallet.findById(req.user.wallet) : null);
 
     if (!wallet) {
+      let initialBonus = 0;
+      try {
+        const settings = await Settings.getSettings();
+        if (settings.welcomeBonus?.enabled && settings.welcomeBonus?.amount > 0) {
+          initialBonus = Number(settings.welcomeBonus.amount);
+        }
+      } catch (e) {
+        console.error("[wallet] Failed to fetch welcome bonus setting:", e.message);
+      }
+
       wallet = await Wallet.create({
         user: userId,
         balance: 0,
-        bonus: 0,
+        bonus: initialBonus,
       });
+
+      if (initialBonus > 0) {
+        try {
+          await WalletTransaction.create({
+            user: userId,
+            amount: initialBonus,
+            type: "ADMIN_ADJUST",
+            balanceAfter: 0,
+            meta: { reason: "welcome_bonus" },
+          });
+        } catch (e) {
+          console.error("[wallet] Failed to log welcome bonus transaction:", e.message);
+        }
+      }
     } else {
       // Ensure numeric fields
       if (typeof wallet.balance !== "number") wallet.balance = 0;

@@ -45,11 +45,10 @@ const Settings = () => {
     fetchSpinConfig,
     saveSystemSettings,
     saveUserGamesSettings,
-    saveSpinConfig,
     updateSystemField,
     updateUserGamesField,
-    updateSpinConfigField,
-    updateSpinOddsField,
+    updateWelcomeBonusField,
+    saveWelcomeBonusSettings,
     addStake,
     removeStake,
     clearError,
@@ -64,6 +63,11 @@ const Settings = () => {
     winCut: settings?.systemGames?.winCut ?? 10,
     gameStakes: settings?.systemGames?.gameStakes ?? [10, 20, 30, 50, 100],
     waitingRoomDuration: settings?.systemGames?.waitingRoomDuration ?? 60,
+  };
+
+  const welcomeBonusSettings = {
+    enabled: settings?.welcomeBonus?.enabled ?? true,
+    amount: settings?.welcomeBonus?.amount ?? 50,
   };
 
   const userGamesSettings = settings?.userGames || {
@@ -195,7 +199,7 @@ const Settings = () => {
 
   const tabs = [
     { id: "system", label: "System Games" },
-    { id: "spin", label: "Spin" },
+    { id: "welcomeBonus", label: "Welcome Bonus" },
     { id: "deposit", label: "Deposit" },
   ];
 
@@ -615,6 +619,55 @@ const Settings = () => {
             </div>
           )}
 
+          {activeTab === "welcomeBonus" && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Welcome Bonus</h3>
+                <p className="text-sm text-gray-500 mb-6">
+                  Non-withdrawable bonus (Birr) given to every new user when they register. Players can use it to play games but cannot withdraw it.
+                </p>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                      Enable Welcome Bonus
+                    </label>
+                    <button
+                      onClick={() => updateWelcomeBonusField("enabled", !welcomeBonusSettings.enabled)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        welcomeBonusSettings.enabled ? "bg-blue-600" : "bg-gray-300"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          welcomeBonusSettings.enabled ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {welcomeBonusSettings.enabled && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Bonus Amount (Birr)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={welcomeBonusSettings.amount}
+                        onChange={(e) => updateWelcomeBonusField("amount", Number(e.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        This amount is added as non-withdrawable bonus to the new user's wallet.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === "deposit" && (
             <div className="space-y-8">
               {depositError && (
@@ -830,10 +883,8 @@ const Settings = () => {
               onClick={
                 activeTab === "system"
                   ? saveSystemSettings
-                  : activeTab === "user"
-                  ? saveUserGamesSettings
-                  : activeTab === "spin"
-                  ? saveSpinConfig
+                  : activeTab === "welcomeBonus"
+                  ? saveWelcomeBonusSettings
                   : activeTab === "deposit"
                   ? saveDepositSettings
                   : () => {}

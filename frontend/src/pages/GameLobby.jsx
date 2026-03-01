@@ -353,7 +353,7 @@ export default function GameLobby() {
                       Stake
                     </p>
                     <h2 className="mt-2 text-3xl font-black text-white">
-                      {amount} point
+                      {amount} Birr
                     </h2>
                   </div>
                   <div

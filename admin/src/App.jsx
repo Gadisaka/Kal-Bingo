@@ -12,7 +12,6 @@ import Notifications from "./pages/Notifications";
 import Settings from "./pages/Settings";
 import Ads from "./pages/Ads";
 import Revenue from "./pages/Revenue";
-import Leaderboard from "./pages/Leaderboard";
 import BotManagement from "./pages/BotManagement";
 import Withdrawals from "./pages/Withdrawals";
 
@@ -119,14 +118,6 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["admin"]} path="/revenue">
                   <Revenue />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/leaderboard"
-              element={
-                <ProtectedRoute allowedRoles={["admin"]} path="/leaderboard">
-                  <Leaderboard />
                 </ProtectedRoute>
               }
             />

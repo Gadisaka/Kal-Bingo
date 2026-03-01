@@ -20,7 +20,6 @@ const AVAILABLE_PAGES = [
   { path: "/transactions", label: "Transactions", icon: "💸" },
   { path: "/withdrawals", label: "Withdrawals", icon: "💰" },
   { path: "/revenue", label: "Revenue", icon: "💰" },
-  { path: "/leaderboard", label: "Leaderboard", icon: "🏆" },
   { path: "/bots", label: "Bot Management", icon: "🤖" },
   { path: "/notifications", label: "Notifications", icon: "🔔" },
   { path: "/ads", label: "Ads", icon: "📢" },

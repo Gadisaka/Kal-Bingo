@@ -302,7 +302,7 @@ export default function WaitingRoom() {
         const refundDisplay = Math.trunc(Number(refundAmount || 0));
         const alertMessage =
           refundAmount > 0
-            ? `${message}\n\nRefunded amount: ${refundDisplay} pts`
+            ? `${message}\n\nRefunded amount: ${refundDisplay} Br`
             : message;
         alert(alertMessage);
         navigate("/");

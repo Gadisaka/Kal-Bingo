@@ -1,6 +1,5 @@
 import WalletTransaction from "../model/walletTransaction.js";
 import Wallet from "../model/wallet.js";
-import { incrementLeaderboardWins, incrementLeaderboardDeposits } from "./leaderboard.js";
 
 /**
  * Log a wallet transaction.
@@ -50,20 +49,6 @@ export const logWalletTransaction = async (userId, amount, type, meta = {}, sess
       tx = await WalletTransaction.create(txData);
     }
 
-    // Update leaderboard stats asynchronously (non-blocking)
-    // Only track positive amounts for wins and deposits
-    if (amount > 0) {
-      if (type === "GAME_WIN") {
-        incrementLeaderboardWins(userId, 1).catch((err) => {
-          console.error("[leaderboard] Failed to update wins:", err.message);
-        });
-      } else if (type === "DEPOSIT") {
-        incrementLeaderboardDeposits(userId, amount).catch((err) => {
-          console.error("[leaderboard] Failed to update deposits:", err.message);
-        });
-      }
-    }
-
     return tx;
   } catch (err) {
     console.error("[walletTransaction] Failed to log transaction:", err.message);
@@ -93,20 +78,6 @@ export const logGameWin = async (userId, prize, roomId, gameType = "system", ses
     Math.abs(prize), // Always positive for win
     "GAME_WIN",
     { roomId, gameType, prize },
-    session
-  );
-};
-
-/**
- * Log a spin bonus credit.
- */
-export const logSpinBonus = async (userId, bonusCash, session = null) => {
-  if (!bonusCash || bonusCash <= 0) return null;
-  return logWalletTransaction(
-    userId,
-    Math.abs(bonusCash),
-    "SPIN_BONUS",
-    { source: "spin_wheel" },
     session
   );
 };

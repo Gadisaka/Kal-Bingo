@@ -25,7 +25,6 @@ export const checkDailyStreak = async (userId) => {
   let streak = Number(user.current_streak || 0);
   let rewarded = false;
   let bonusPoints = 0;
-  let spinsAwarded = 0;
 
   if (last) {
     const diffDays = Math.floor(
@@ -59,15 +58,12 @@ export const checkDailyStreak = async (userId) => {
         console.error("[streak] Failed to grant streak bonus:", err.message);
       }
     }
-    // Award a spin on completion
-    spinsAwarded = 1;
     rewarded = true;
-    streak = 0; // reset/loop
+    streak = 0;
   }
 
   user.current_streak = streak;
   user.last_active_date = today;
-  user.available_spins = Number(user.available_spins || 0) + spinsAwarded;
   await user.save();
 
   return {
@@ -75,7 +71,6 @@ export const checkDailyStreak = async (userId) => {
     rewarded,
     bonusPoints,
     target,
-    spinsAwarded,
   };
 };
 

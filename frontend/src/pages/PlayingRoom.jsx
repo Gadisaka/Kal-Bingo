@@ -1321,7 +1321,7 @@ export default function PlayingRoom() {
                   </p>
                   <p className="text-xl font-black text-[#FFA500]">
                     {calculatePrizeWithWinCut(systemWinnerData.prize)}{" "}
-                    pts
+                    Br
                   </p>
                 </div>
 

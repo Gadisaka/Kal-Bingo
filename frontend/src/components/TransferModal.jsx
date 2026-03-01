@@ -174,7 +174,7 @@ export default function TransferModal({
       });
 
       setSuccessMsg(
-        `Sent ${formatWhole(res.data?.amount)} pts to ${res.data?.to?.name || "user"}`
+        `Sent ${formatWhole(res.data?.amount)} Br to ${res.data?.to?.name || "user"}`
       );
 
       if (typeof onSuccess === "function") {
@@ -198,7 +198,7 @@ export default function TransferModal({
 
       <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 shadow-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
-          <div className="font-bold text-white">Transfer pts</div>
+          <div className="font-bold text-white">Transfer Birr</div>
           <button
             onClick={onClose}
             className="p-2 rounded-full hover:bg-white/10 text-slate-300"
@@ -210,7 +210,7 @@ export default function TransferModal({
 
         <div className="p-5 space-y-4">
           <div className="text-xs text-slate-400">
-            Available: <span className="text-slate-200 font-semibold">{formatWhole(availableBalance)} pts</span>
+            Available: <span className="text-slate-200 font-semibold">{formatWhole(availableBalance)} Br</span>
           </div>
 
           {/* Phone/Name Search */}
@@ -298,7 +298,7 @@ export default function TransferModal({
           {/* Amount */}
           <div className="space-y-2">
             <label className="text-xs font-bold uppercase tracking-widest text-slate-500">
-              Amount (pts)
+              Amount (Br)
             </label>
             <input
               value={amount}
@@ -342,7 +342,7 @@ export default function TransferModal({
             disabled={submitting || !recipient}
             className="w-full rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-400 hover:to-indigo-400 text-white font-black py-4 flex items-center justify-center gap-2 disabled:opacity-60"
           >
-            <Send className="w-5 h-5" /> {submitting ? "Sending..." : "Send pts"}
+            <Send className="w-5 h-5" /> {submitting ? "Sending..." : "Send Birr"}
           </button>
         </div>
       </div>
