@@ -7,9 +7,9 @@ import {
   Star as StarIcon,
   Users,
   Timer as TimerIcon,
-  Coins,
   Gamepad2,
   Undo2,
+  Loader2,
 } from "lucide-react";
 import { API_URL } from "../constant";
 
@@ -97,59 +97,40 @@ export default function GameLobby() {
 
   useEffect(() => {
     const handleRoomsList = (roomsList) => {
-      // Only show waiting rooms
-      const waitingRooms = roomsList.filter((r) => r.status === "waiting");
-      setRooms(waitingRooms);
-      console.log(
-        `📋 Received rooms list: ${waitingRooms.length} waiting room(s)`
+      const activeRooms = roomsList.filter(
+        (r) => r.status === "waiting" || r.status === "playing"
       );
+      setRooms(activeRooms);
     };
 
     const handleRoomCreated = (newRoom) => {
-      console.log(
-        "🆕 New room created:",
-        newRoom.id,
-        "Bet:",
-        newRoom.betAmount
-      );
-      if (
-        newRoom.status === "waiting" &&
-        betAmounts.includes(newRoom.betAmount)
-      ) {
-        setRooms((prev) => {
-          // Only add if not already present
-          if (prev.some((r) => r.id === newRoom.id)) return prev;
-          return [...prev, newRoom];
-        });
-      }
+      if (!betAmounts.includes(newRoom.betAmount)) return;
+      setRooms((prev) => {
+        if (prev.some((r) => r.id === newRoom.id)) return prev;
+        return [...prev, newRoom];
+      });
     };
 
     const handleRoomUpdate = (updatedRoom) => {
+      if (!betAmounts.includes(updatedRoom.betAmount)) return;
       setRooms((prev) => {
-        // If room is not waiting, remove it from the list
-        if (updatedRoom.status !== "waiting") {
+        if (updatedRoom.status === "finished" || updatedRoom.status === "cancelled") {
           return prev.filter((r) => r.id !== updatedRoom.id);
         }
-
-        // Check if this bet amount should be displayed
-        if (!betAmounts.includes(updatedRoom.betAmount)) return prev;
-
-        // Update existing room or add new waiting room
         const existingIndex = prev.findIndex((r) => r.id === updatedRoom.id);
         if (existingIndex !== -1) {
-          // Update existing room
           const updated = [...prev];
           updated[existingIndex] = updatedRoom;
           return updated;
-        } else {
-          // Add new waiting room if it doesn't exist
+        }
+        if (updatedRoom.status === "waiting" || updatedRoom.status === "playing") {
           return [...prev, updatedRoom];
         }
+        return prev;
       });
     };
 
     const handleRoomRemoved = ({ roomId }) => {
-      console.log("🗑️ Room removed:", roomId);
       setRooms((prev) => prev.filter((r) => r.id !== roomId));
     };
 
@@ -168,14 +149,13 @@ export default function GameLobby() {
     };
 
     const handleRoomCleared = ({ roomId }) => {
-      console.log("🗑️ Room cleared:", roomId);
       setRooms((prev) => prev.filter((r) => r.id !== roomId));
     };
 
-    const handleGameStart = ({ roomId, betAmount }) => {
-      console.log("game:start", roomId, betAmount);
-      // Remove from lobby when game starts
-      setRooms((prev) => prev.filter((r) => r.id !== roomId));
+    const handleGameStart = ({ roomId }) => {
+      setRooms((prev) =>
+        prev.map((r) => (r.id === roomId ? { ...r, status: "playing" } : r))
+      );
     };
 
     const handleJoinDenied = ({ reason }) => {
@@ -336,20 +316,21 @@ export default function GameLobby() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {betAmounts.map((amount) => {
             const room = rooms.find((r) => r.betAmount === amount);
+            const isPlaying = room?.status === "playing";
+            const isWaiting = room?.status === "waiting";
             const playersCount = room?.joinedPlayers?.length ?? 0;
-            const isJoined = rooms.find((r) =>
-              r.joinedPlayers?.some((p) => p.userId === user?.id)
-            )?.betAmount === amount;
+            const isJoined = isWaiting && room?.joinedPlayers?.some((p) => p.userId === user?.id);
             const secondsLeft =
-              room && room.expiresAt ? countdowns[room.id] : null;
-            const hasActiveRoom = room !== undefined;
+              room && room.expiresAt && isWaiting ? countdowns[room.id] : null;
 
             return (
               <div
                 key={amount}
                 className={`group rounded-3xl border px-5 py-6 shadow-[0_24px_60px_rgba(56,189,248,0.15)] transition-all duration-300
                   ${
-                    hasActiveRoom
+                    isPlaying
+                      ? "border-amber-500/40 bg-slate-900/70"
+                      : isWaiting
                       ? "border-sky-500/40 bg-slate-900/70"
                       : "border-slate-700/40 bg-slate-900/50"
                   }
@@ -368,37 +349,66 @@ export default function GameLobby() {
                   <div
                     className={`rounded-2xl px-3 py-1 text-xs font-semibold uppercase tracking-widest
                     ${
-                      hasActiveRoom
+                      isPlaying
+                        ? "bg-amber-500/15 text-amber-200"
+                        : isWaiting
                         ? "bg-emerald-500/15 text-emerald-200"
                         : "bg-slate-700/60 text-slate-300"
                     }
                   `}
                   >
-                    {hasActiveRoom ? "Active" : "Awaiting"}
+                    {isPlaying
+                      ? "In Progress"
+                      : isWaiting
+                      ? "Open"
+                      : "Starting Soon"}
                   </div>
                 </div>
 
                 <div className="mt-6 space-y-2 text-sm text-sky-200/80">
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-sky-300" />
-                    Players: {playersCount}/{maxPlayers}
-                  </div>
-                  {secondsLeft !== null && (
+                  {isPlaying ? (
                     <div className="flex items-center gap-2 text-amber-200">
-                      <TimerIcon className="h-4 w-4 text-amber-300" />
-                      Starts in: {secondsLeft}s
+                      <Loader2 className="h-4 w-4 text-amber-300 animate-spin" />
+                      Game in progress
                     </div>
-                  )}
-                  {!hasActiveRoom && (
+                  ) : isWaiting ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-sky-300" />
+                        Players: {playersCount}/{maxPlayers}
+                      </div>
+                      {secondsLeft !== null && (
+                        <div className="flex items-center gap-2 text-amber-200">
+                          <TimerIcon className="h-4 w-4 text-amber-300" />
+                          Starts in: {secondsLeft}s
+                        </div>
+                      )}
+                    </>
+                  ) : (
                     <div className="flex items-center gap-2 text-slate-300/80">
-                      <Coins className="h-4 w-4" />
-                      Be the first to launch this game
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Next game starting soon...
                     </div>
                   )}
                 </div>
 
                 <div className="mt-6 flex gap-2">
-                  {!isJoined ? (
+                  {isPlaying ? (
+                    <button
+                      disabled
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-700/60 px-4 py-3 text-sm font-semibold text-slate-400 cursor-not-allowed"
+                    >
+                      <Gamepad2 className="h-4 w-4" />
+                      Wait for Next Game
+                    </button>
+                  ) : isWaiting && isJoined ? (
+                    <button
+                      onClick={leaveRoom}
+                      className="flex-1 rounded-2xl border border-sky-500/40 bg-slate-900/70 px-4 py-3 text-sm font-semibold text-sky-200 transition hover:bg-sky-500/15"
+                    >
+                      Leave
+                    </button>
+                  ) : isWaiting ? (
                     <button
                       onClick={() => joinRoom(amount)}
                       disabled={
@@ -407,18 +417,15 @@ export default function GameLobby() {
                       className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(56,189,248,0.35)] transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_24px_60px_rgba(56,189,248,0.45)] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Gamepad2 className="h-4 w-4" />
-                      {joinLoading === amount
-                        ? "Joining..."
-                        : hasActiveRoom
-                        ? "Join Room"
-                        : "Start Room"}
+                      {joinLoading === amount ? "Joining..." : "Join Room"}
                     </button>
                   ) : (
                     <button
-                      onClick={leaveRoom}
-                      className="flex-1 rounded-2xl border border-sky-500/40 bg-slate-900/70 px-4 py-3 text-sm font-semibold text-sky-200 transition hover:bg-sky-500/15"
+                      disabled
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-700/60 px-4 py-3 text-sm font-semibold text-slate-400 cursor-not-allowed"
                     >
-                      Leave
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Starting Soon...
                     </button>
                   )}
                 </div>

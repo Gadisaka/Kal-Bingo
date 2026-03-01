@@ -209,8 +209,6 @@ export async function leaveSystemRoom(userId) {
       room.joinedPlayers.splice(idx, 1);
       if (room.joinedPlayers.length === 0) {
         room.status = "waiting";
-        room.expiresAt = null;
-        // Update database
         await GameRoom.findByIdAndUpdate(room.id, {
           $set: { players: [], gameStatus: "waiting" },
         });
@@ -657,30 +655,17 @@ export async function removeUserFromAllRooms(userId) {
     );
     if (playerIndex !== -1) {
       room.joinedPlayers.splice(playerIndex, 1);
-
-      // If room is now empty, mark for deletion
-      if (room.joinedPlayers.length === 0 && room.status === "waiting") {
-        roomsToUpdate.push({ room, action: "delete" });
-      } else {
-        roomsToUpdate.push({ room, action: "update" });
-      }
+      roomsToUpdate.push({ room, action: "update" });
     }
   }
 
-  // Update database for all affected rooms
-  for (const { room, action } of roomsToUpdate) {
-    if (action === "delete") {
-      await GameRoom.findByIdAndDelete(room.id);
-      // Remove from memory
-      removeFromMemory(room.id);
-    } else {
-      await GameRoom.findByIdAndUpdate(room.id, {
-        $set: {
-          players: room.joinedPlayers,
-          gameStatus: room.status,
-        },
-      });
-    }
+  for (const { room } of roomsToUpdate) {
+    await GameRoom.findByIdAndUpdate(room.id, {
+      $set: {
+        players: room.joinedPlayers,
+        gameStatus: room.status,
+      },
+    });
   }
 
   return roomsToUpdate.map(({ room }) => room);

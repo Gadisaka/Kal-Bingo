@@ -10,6 +10,7 @@ import {
   loadSystemRoomsFromDB,
   registerRoomHandlers,
   initPeriodicRoomCleanup,
+  ensureRoomsForAllStakes,
 } from "./sockets/roomHandlers.js";
 
 import userRoutes from "./route/user.route.js";
@@ -65,20 +66,18 @@ app.use("/api/referral", referralRoutes);
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// Load existing system-hosted rooms from database (demand-based system)
-// No auto-creation - rooms are created when players join
+// Load existing system rooms and ensure one room per stake always exists
 loadSystemRoomsFromDB()
-  .then((rooms) => {
+  .then(async (rooms) => {
     if (rooms.length > 0) {
       console.log(
         "✅ Loaded existing system rooms:",
         rooms.map((r) => `${r.id} (${r.betAmount})`).join(", ")
       );
     } else {
-      console.log(
-        "✅ No existing system rooms found. Rooms will be created on-demand."
-      );
+      console.log("✅ No existing system rooms found.");
     }
+    await ensureRoomsForAllStakes(io);
   })
   .catch((err) => {
     console.error("❌ Failed to load system rooms:", err.message);
