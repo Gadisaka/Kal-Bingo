@@ -25,16 +25,16 @@ function App() {
         <Routes>
           <Route path="/example" element={<BingoGame />} />
           <Route path="/test-audio" element={<TestAudioComponent />} />
-          <Route path="/" element={<GamesList />} />
-          <Route path="/bingo" element={<HomePage />} />
           <Route
-            path="/systemGames"
+            path="/"
             element={
               <ProtectedRoute>
                 <GameLobby />
               </ProtectedRoute>
             }
           />
+          <Route path="/games" element={<GamesList />} />
+          <Route path="/bingo" element={<HomePage />} />
           <Route
             path="/waiting/:gameRoomId"
             element={

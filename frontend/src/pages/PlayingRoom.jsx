@@ -766,7 +766,7 @@ export default function PlayingRoom() {
   };
 
   const handleLeaveGame = () => {
-    navigate("/bingo");
+    navigate("/");
   };
 
   // --- AUDIO CONTROLS ---

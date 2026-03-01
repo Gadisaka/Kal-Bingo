@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { socketClient } from "../sockets/socket";
 import WalletBadge from "../components/WalletBadge";
+import BottomNavbar from "../components/BottomNavbar";
 import { useAuth } from "../context/AuthContext";
 import {
   Star as StarIcon,
   Users,
   Timer as TimerIcon,
   Gamepad2,
-  Undo2,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { API_URL } from "../constant";
 
@@ -49,29 +50,37 @@ export default function GameLobby() {
     }));
   }, []);
 
-  // Realtime countdown effect for all rooms with expiresAt (fallback if server countdown stops)
+  // Real-time countdown — runs continuously at 500ms so timers never appear stuck
+  const roomsRef = useRef(rooms);
+  roomsRef.current = rooms;
+
   useEffect(() => {
-    let interval;
-    if (rooms.some((r) => r.expiresAt)) {
-      interval = setInterval(() => {
-        setCountdowns((current) => {
-          const updates = { ...current };
-          rooms.forEach((r) => {
-            if (r.expiresAt) {
-              updates[r.id] = Math.max(
-                0,
-                Math.ceil((r.expiresAt - Date.now()) / 1000)
-              );
-            } else {
-              delete updates[r.id];
-            }
-          });
-          return updates;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [rooms]);
+    let animId;
+    let lastTick = 0;
+
+    const tick = (now) => {
+      animId = requestAnimationFrame(tick);
+      if (now - lastTick < 500) return;
+      lastTick = now;
+
+      const currentRooms = roomsRef.current;
+      setCountdowns((prev) => {
+        const next = {};
+        let changed = false;
+        for (const r of currentRooms) {
+          if (r.expiresAt) {
+            const val = Math.max(0, Math.ceil((r.expiresAt - Date.now()) / 1000));
+            next[r.id] = val;
+            if (prev[r.id] !== val) changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    };
+
+    animId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animId);
+  }, []);
 
   // Fetch game settings from API
   useEffect(() => {
@@ -251,17 +260,16 @@ export default function GameLobby() {
     socket.emit("system:leaveRoom", { userId: user.id });
   };
 
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    socket.emit("system:getRooms");
+    setTimeout(() => setRefreshing(false), 600);
+  }, [socket]);
+
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-sky-950 text-white">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-sky-950 text-white pb-24">
       <WalletBadge />
-      {/* Back Button */}
-      <button
-        onClick={() => navigate("/bingo")}
-        className="mt-6 ml-6 flex items-center gap-2  rounded-full bg-sky-600/20 px-4 py-2 text-white shadow hover:bg-sky-700 transition focus:outline-none focus:ring-2 focus:ring-sky-400/80"
-        style={{ fontWeight: 600, fontSize: "1rem" }}
-      >
-        <Undo2 className="w-4 h-4" /> Back
-      </button>
       <div className="absolute -top-52 -right-32 h-[480px] w-2/3 md:w-[480px] rounded-full bg-sky-500/25 blur-3xl" />
       <div className="absolute -bottom-48 -left-24 h-[520px] w-[520px] rounded-full bg-indigo-500/20 blur-[140px]" />
       <div className="absolute inset-0 pointer-events-none">
@@ -283,35 +291,19 @@ export default function GameLobby() {
       </div>
 
       <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 sm:px-6 lg:px-10 py-10">
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-sky-500/40 bg-sky-500/10 px-4 py-1 text-xs sm:text-sm font-semibold uppercase tracking-[0.3em] text-sky-200/80">
-              System Games
-            </div>
+        <div className="flex items-center justify-between">
+          <div className="inline-flex items-center gap-2 rounded-full border border-sky-500/40 bg-sky-500/10 px-4 py-1 text-xs sm:text-sm font-semibold uppercase tracking-[0.3em] text-sky-200/80">
+            System Games
           </div>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-2 rounded-full bg-sky-600/20 px-4 py-2 text-sm font-semibold text-sky-200 hover:bg-sky-600/30 transition disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
         </div>
-
-        {/* <div className="rounded-3xl border border-sky-500/25 bg-slate-900/60 px-6 py-5 shadow-[0_24px_60px_rgba(56,189,248,0.25)]">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm sm:text-base text-sky-200/70">
-              {rooms.length === 0 ? (
-                <span className="inline-flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-sky-300" />
-                  No active rooms yet. Tap a stake to open one!
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-sky-300" />
-                  Choose a stake to join the busiest rooms in BANI Bingo.
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-3 rounded-2xl border border-sky-500/30 bg-slate-900/70 px-4 py-2 text-xs sm:text-sm text-sky-200">
-              <Users className="h-4 w-4" />
-              Active Rooms: {rooms.length}
-            </div>
-          </div>
-        </div> */}
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {betAmounts.map((amount) => {
@@ -434,6 +426,7 @@ export default function GameLobby() {
           })}
         </div>
       </div>
+      <BottomNavbar />
     </div>
   );
 }

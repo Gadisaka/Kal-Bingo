@@ -19,7 +19,7 @@ const AuthPage = () => {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate("/systemGames");
+      navigate("/");
     }
   }, [isAuthenticated, navigate]);
 
@@ -55,7 +55,7 @@ const AuthPage = () => {
 
         if (result.status === "SUCCESS") {
           setPolling(false);
-          navigate("/systemGames");
+          navigate("/");
         } else if (
           result.status === "NEEDS_PHONE_VERIFICATION" ||
           result.status === "NEEDS_PHONE"
@@ -218,7 +218,7 @@ const AuthPage = () => {
           tempToken={tempToken}
           telegramUser={telegramUser}
           onClose={() => setShowPhoneModal(false)}
-          onSuccess={() => navigate("/systemGames")}
+          onSuccess={() => navigate("/")}
         />
       )}
 

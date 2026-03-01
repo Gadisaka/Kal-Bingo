@@ -63,7 +63,7 @@ export default function HomePage() {
       {/* === Buttons Section === */}
       <div className="flex flex-col items-center justify-center gap-6 mt-10 z-10 w-[90%] max-w-md">
         <Link
-          to="/systemGames"
+          to="/"
           className="group w-full bg-gradient-to-b from-sky-700/40 to-sky-900/60 border border-sky-400/50 hover:border-sky-300/90 text-white rounded-2xl py-6 flex items-center justify-center gap-4 shadow-[0_0_30px_rgba(56,189,248,0.25)] hover:shadow-sky-400/40 transition-all duration-300"
         >
           <Gamepad2 className="w-10 h-10 text-sky-400 group-hover:scale-110 transition-transform duration-200" />
