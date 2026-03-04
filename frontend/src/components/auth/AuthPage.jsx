@@ -4,6 +4,12 @@ import { useAuth } from "../../context/AuthContext";
 import { Star, Send, ExternalLink, Loader2 } from "lucide-react";
 import PhoneVerificationModal from "./PhoneVerificationModal";
 
+const UI_COLORS = {
+  base: "#1E2330",
+  surface: "#F2F2EC",
+  accent: "#3A7A45",
+};
+
 const AuthPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -106,25 +112,24 @@ const AuthPage = () => {
   }, []);
 
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-black text-white">
-      {/* Background Effects */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-[700px] h-[700px] bg-sky-500/20 rounded-[55%_45%_60%_40%/60%_40%_55%_45%] blur-3xl animate-pulse" />
-        <div className="absolute bottom-[-100px] left-[-100px] w-[500px] h-[500px] bg-sky-400/30 rounded-[60%_40%_55%_45%/40%_60%_45%_55%] blur-[120px]" />
-      </div>
-
+    <div
+      className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden"
+      style={{ backgroundColor: UI_COLORS.base, color: UI_COLORS.surface }}
+    >
       {/* Stars Background */}
       <div className="absolute inset-0 pointer-events-none z-0">
         {stars.map((star) => (
           <Star
             key={star.id}
-            className="absolute text-sky-200 fill-sky-200"
+            className="absolute"
             style={{
               left: `${star.left}%`,
               top: `${star.top}%`,
               width: `${star.size}px`,
               height: `${star.size}px`,
               opacity: star.opacity,
+              color: UI_COLORS.accent,
+              fill: UI_COLORS.accent,
               animation: `twinkle ${star.duration}s ease-in-out infinite`,
               animationDelay: `${star.delay}s`,
             }}
@@ -134,10 +139,18 @@ const AuthPage = () => {
 
       {/* Login Card */}
       <div className="relative z-10 w-full max-w-md px-6">
-        <div className="bg-gradient-to-b from-sky-900/40 to-sky-900/60 backdrop-blur-sm border border-sky-400/30 rounded-2xl p-8 shadow-[0_0_40px_rgba(56,189,248,0.2)]">
+        <div
+          className="border rounded-2xl p-8"
+          style={{ backgroundColor: UI_COLORS.surface, borderColor: UI_COLORS.accent }}
+        >
           {/* Logo/Title */}
           <div className="text-center mb-8">
-            <p className="text-sky-400/80 mt-2">Login with Telegram to play</p>
+            <h1 className="text-2xl font-black" style={{ color: UI_COLORS.base }}>
+              Login
+            </h1>
+            <p className="mt-2 text-sm font-semibold" style={{ color: UI_COLORS.base }}>
+              Use Telegram
+            </p>
           </div>
 
           {/* Bot Auth Section */}
@@ -146,7 +159,12 @@ const AuthPage = () => {
               <button
                 onClick={handleBotAuth}
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-sky-600 to-sky-700 hover:from-sky-500 hover:to-sky-600 text-white rounded-xl py-4 px-6 flex items-center justify-center gap-3 font-semibold text-lg shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full rounded-xl py-4 px-6 flex items-center justify-center gap-3 font-black text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed border"
+                style={{
+                  backgroundColor: UI_COLORS.accent,
+                  color: UI_COLORS.surface,
+                  borderColor: UI_COLORS.base,
+                }}
               >
                 {loading ? (
                   <>
@@ -162,25 +180,33 @@ const AuthPage = () => {
               </button>
             ) : (
               <div className="w-full space-y-4">
-                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 text-center">
-                  <p className="text-emerald-400 font-semibold mb-3">
-                    Click the button below to authorize in Telegram
+                <div
+                  className="border rounded-xl p-4 text-center"
+                  style={{ backgroundColor: UI_COLORS.surface, borderColor: UI_COLORS.accent }}
+                >
+                  <p className="font-bold mb-3" style={{ color: UI_COLORS.base }}>
+                    Open Telegram
                   </p>
                   <a
                     href={botLink}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white rounded-xl py-3 px-6 font-semibold transition-all shadow-lg"
+                    className="inline-flex items-center gap-2 rounded-xl py-3 px-6 font-bold transition-all border"
+                    style={{
+                      backgroundColor: UI_COLORS.accent,
+                      color: UI_COLORS.surface,
+                      borderColor: UI_COLORS.base,
+                    }}
                   >
                     <ExternalLink className="w-5 h-5" />
-                    Open Telegram Bot
+                    Open Bot
                   </a>
                 </div>
 
                 {polling && (
-                  <div className="flex items-center justify-center gap-2 text-sky-400">
+                  <div className="flex items-center justify-center gap-2" style={{ color: UI_COLORS.base }}>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Waiting for authorization...</span>
+                    <span>Waiting...</span>
                   </div>
                 )}
 
@@ -191,7 +217,8 @@ const AuthPage = () => {
                     setPolling(false);
                     setError("");
                   }}
-                  className="w-full text-sky-400 hover:text-sky-300 text-sm transition-colors"
+                  className="w-full text-sm font-bold transition-colors"
+                  style={{ color: UI_COLORS.base }}
                 >
                   Cancel
                 </button>
@@ -199,7 +226,14 @@ const AuthPage = () => {
             )}
 
             {error && (
-              <div className="w-full text-red-400 text-sm text-center bg-red-500/10 border border-red-500/30 rounded-lg py-2 px-4">
+              <div
+                className="w-full text-sm text-center border rounded-lg py-2 px-4 font-semibold"
+                style={{
+                  backgroundColor: UI_COLORS.base,
+                  color: UI_COLORS.surface,
+                  borderColor: UI_COLORS.accent,
+                }}
+              >
                 {error}
               </div>
             )}
@@ -207,8 +241,8 @@ const AuthPage = () => {
         </div>
 
         {/* Footer */}
-        <p className="text-center text-sky-500/50 text-xs mt-6">
-          By logging in, you agree to our Terms of Service
+        <p className="text-center text-xs mt-6" style={{ color: UI_COLORS.surface }}>
+          Continue to play
         </p>
       </div>
 

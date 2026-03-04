@@ -25,6 +25,11 @@ const useSettingsStore = create((set, get) => ({
       enabled: true,
       amount: 50,
     },
+    referral: {
+      enabled: true,
+      rewardAmount: 50,
+      maxReferrals: 0,
+    },
   },
   spinConfig: {
     spinCostPoints: 500,
@@ -194,6 +199,23 @@ const useSettingsStore = create((set, get) => ({
   saveWelcomeBonusSettings: async () => {
     const welcomeBonus = get().settings.welcomeBonus;
     await get().updateSettings({ welcomeBonus });
+  },
+
+  updateReferralField: (fieldName, value) => {
+    set((state) => ({
+      settings: {
+        ...state.settings,
+        referral: {
+          ...state.settings.referral,
+          [fieldName]: value,
+        },
+      },
+    }));
+  },
+
+  saveReferralSettings: async () => {
+    const referral = get().settings.referral;
+    await get().updateSettings({ referral });
   },
 
   // Spin Config Actions (legacy — kept for compatibility)

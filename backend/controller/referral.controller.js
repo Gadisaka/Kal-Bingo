@@ -56,11 +56,9 @@ export const getReferralSettings = async (req, res) => {
       success: true,
       data: {
         enabled: referralSettings.enabled !== false,
-        rewardType: referralSettings.rewardType || 'points',
-        rewardAmount: referralSettings.rewardAmount || 50,
-        minGamesRequired: referralSettings.minGamesRequired || 1,
-        newUserBonus: referralSettings.newUserBonus || 0,
-        newUserBonusType: referralSettings.newUserBonusType || 'points'
+        rewardType: 'bonus',
+        rewardAmount: referralSettings.rewardAmount ?? 50,
+        maxReferrals: referralSettings.maxReferrals ?? 0
       }
     });
   } catch (error) {

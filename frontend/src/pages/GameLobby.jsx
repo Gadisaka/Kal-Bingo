@@ -25,6 +25,12 @@ const DEFAULT_SETTINGS = {
   waitingRoomDuration: 60,
 };
 
+const UI_COLORS = {
+  base: "#1E2330",
+  surface: "#F2F2EC",
+  accent: "#3A7A45",
+};
+
 export default function GameLobby() {
   const { user } = useAuth();
   const [rooms, setRooms] = useState([]);
@@ -286,21 +292,23 @@ export default function GameLobby() {
   }, [socket]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-sky-950 text-white pb-24">
+    <div
+      className="relative min-h-screen overflow-hidden pb-24"
+      style={{ backgroundColor: UI_COLORS.base, color: UI_COLORS.surface }}
+    >
       <WalletBadge />
-      <div className="absolute -top-52 -right-32 h-[480px] w-2/3 md:w-[480px] rounded-full bg-sky-500/25 blur-3xl" />
-      <div className="absolute -bottom-48 -left-24 h-[520px] w-[520px] rounded-full bg-indigo-500/20 blur-[140px]" />
       <div className="absolute inset-0 pointer-events-none">
         {backgroundStars.map((star) => (
           <StarIcon
             key={star.id}
-            className="absolute text-sky-200/40"
+            className="absolute"
             style={{
               left: `${star.left}%`,
               top: `${star.top}%`,
               width: `${star.size}px`,
               height: `${star.size}px`,
               opacity: star.opacity,
+              color: UI_COLORS.accent,
               animation: `twinkle ${star.duration}s ease-in-out infinite`,
               animationDelay: `${star.delay}s`,
             }}
@@ -310,20 +318,32 @@ export default function GameLobby() {
 
       <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 sm:px-6 lg:px-10 py-10">
         <div className="flex items-center justify-between">
-          <div className="inline-flex items-center gap-2 rounded-full border border-sky-500/40 bg-sky-500/10 px-4 py-1 text-xs sm:text-sm font-semibold uppercase tracking-[0.3em] text-sky-200/80">
-            System Games
+          <div
+            className="inline-flex items-center gap-2 rounded-full border px-4 py-1 text-xs sm:text-sm font-semibold uppercase tracking-[0.3em]"
+            style={{
+              borderColor: UI_COLORS.accent,
+              backgroundColor: UI_COLORS.surface,
+              color: UI_COLORS.base,
+            }}
+          >
+            Games
           </div>
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="flex items-center gap-2 rounded-full bg-sky-600/20 px-4 py-2 text-sm font-semibold text-sky-200 hover:bg-sky-600/30 transition disabled:opacity-50"
+            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition disabled:opacity-50 border"
+            style={{
+              backgroundColor: UI_COLORS.accent,
+              color: UI_COLORS.surface,
+              borderColor: UI_COLORS.surface,
+            }}
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-            Refresh
+            Reload
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           {betAmounts.map((amount) => {
             const room = rooms.find((r) => r.betAmount === amount);
             const isPlaying = room?.status === "playing";
@@ -336,85 +356,76 @@ export default function GameLobby() {
             return (
               <div
                 key={amount}
-                className={`group rounded-3xl border px-5 py-6 shadow-[0_24px_60px_rgba(56,189,248,0.15)] transition-all duration-300
-                  ${
-                    isPlaying
-                      ? "border-amber-500/40 bg-slate-900/70"
-                      : isWaiting
-                      ? "border-sky-500/40 bg-slate-900/70"
-                      : "border-slate-700/40 bg-slate-900/50"
-                  }
-                  ${isJoined ? "ring-2 ring-sky-400/70" : ""}
-                `}
+                className={`group rounded-3xl border-2 px-5 py-4 transition-all duration-300 ${isJoined ? "ring-2" : ""}`}
+                style={{
+                  borderColor: UI_COLORS.accent,
+                  backgroundColor: UI_COLORS.surface,
+                  color: UI_COLORS.base,
+                  boxShadow: isJoined ? `0 0 0 2px ${UI_COLORS.accent}` : "none",
+                }}
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.25em] text-sky-300/80">
+                    <p className="text-xs uppercase tracking-[0.25em] font-bold" style={{ color: UI_COLORS.accent }}>
                       Stake
                     </p>
-                    <h2 className="mt-2 text-3xl font-black text-white">
-                      {amount} Birr
+                    <h2 className="mt-2 text-3xl font-black">
+                      {amount} Br
                     </h2>
                   </div>
                   <div
-                    className={`rounded-2xl px-3 py-1 text-xs font-semibold uppercase tracking-widest
-                    ${
-                      isPlaying
-                        ? "bg-amber-500/15 text-amber-200"
-                        : isWaiting
-                        ? "bg-emerald-500/15 text-emerald-200"
-                        : "bg-slate-700/60 text-slate-300"
-                    }
-                  `}
+                    className="rounded-2xl px-3 py-1 text-xs font-black uppercase tracking-widest"
+                    style={{
+                      backgroundColor: isPlaying ? UI_COLORS.base : UI_COLORS.accent,
+                      color: UI_COLORS.surface,
+                    }}
                   >
-                    {isPlaying
-                      ? "In Progress"
-                      : isWaiting
-                      ? "Open"
-                      : "Starting Soon"}
+                    {isPlaying ? "Live" : isWaiting ? "Open" : "Soon"}
                   </div>
                 </div>
 
-                <div className="mt-6 space-y-2 text-sm text-sky-200/80">
+                <div className="mt-4 space-y-1.5 text-sm font-bold" style={{ color: UI_COLORS.base }}>
                   {isPlaying ? (
-                    <div className="flex items-center gap-2 text-amber-200">
-                      <Loader2 className="h-4 w-4 text-amber-300 animate-spin" />
-                      Game in progress
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Live game
                     </div>
                   ) : isWaiting ? (
                     <>
                       <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-sky-300" />
-                        Players: {playersCount}/{maxPlayers}
+                        <Users className="h-4 w-4" />
+                        {playersCount}/{maxPlayers} players
                       </div>
                       {secondsLeft !== null && (
-                        <div className="flex items-center gap-2 text-amber-200">
-                          <TimerIcon className="h-4 w-4 text-amber-300" />
-                          Starts in: {secondsLeft}s
+                        <div className="flex items-center gap-2">
+                          <TimerIcon className="h-4 w-4" />
+                          {secondsLeft}s
                         </div>
                       )}
                     </>
                   ) : (
-                    <div className="flex items-center gap-2 text-slate-300/80">
+                    <div className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Next game starting soon...
+                      Preparing...
                     </div>
                   )}
                 </div>
 
-                <div className="mt-6 flex gap-2">
+                <div className="mt-4 flex gap-2">
                   {isPlaying ? (
                     <button
                       disabled
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-700/60 px-4 py-3 text-sm font-semibold text-slate-400 cursor-not-allowed"
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black cursor-not-allowed border"
+                      style={{ backgroundColor: UI_COLORS.base, color: UI_COLORS.surface, borderColor: UI_COLORS.accent }}
                     >
                       <Gamepad2 className="h-4 w-4" />
-                      Wait for Next Game
+                      Wait
                     </button>
                   ) : isWaiting && isJoined ? (
                     <button
                       onClick={leaveRoom}
-                      className="flex-1 rounded-2xl border border-sky-500/40 bg-slate-900/70 px-4 py-3 text-sm font-semibold text-sky-200 transition hover:bg-sky-500/15"
+                      className="flex-1 rounded-2xl border px-4 py-2.5 text-sm font-black transition"
+                      style={{ borderColor: UI_COLORS.base, backgroundColor: UI_COLORS.surface, color: UI_COLORS.base }}
                     >
                       Leave
                     </button>
@@ -424,18 +435,20 @@ export default function GameLobby() {
                       disabled={
                         joinLoading === amount || playersCount >= maxPlayers
                       }
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(56,189,248,0.35)] transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_24px_60px_rgba(56,189,248,0.45)] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-50 border"
+                      style={{ backgroundColor: UI_COLORS.accent, color: UI_COLORS.surface, borderColor: UI_COLORS.base }}
                     >
                       <Gamepad2 className="h-4 w-4" />
-                      {joinLoading === amount ? "Joining..." : "Join Room"}
+                      {joinLoading === amount ? "Joining..." : "Join"}
                     </button>
                   ) : (
                     <button
                       disabled
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-700/60 px-4 py-3 text-sm font-semibold text-slate-400 cursor-not-allowed"
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black cursor-not-allowed border"
+                      style={{ backgroundColor: UI_COLORS.base, color: UI_COLORS.surface, borderColor: UI_COLORS.accent }}
                     >
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Starting Soon...
+                      Soon
                     </button>
                   )}
                 </div>

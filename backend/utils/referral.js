@@ -6,6 +6,7 @@
 
 import User from "../model/user.js";
 import Settings from "../model/settings.js";
+import Wallet from "../model/wallet.js";
 
 /**
  * Parse referral code from various sources
@@ -89,64 +90,35 @@ export const applyReferral = async (newUser, referralCode) => {
     const settings = await Settings.getSettings();
     const referralSettings = settings.referral || {};
 
-    // Check if referral system is enabled
     if (referralSettings.enabled === false) {
       return { success: false, error: "Referral system is disabled" };
     }
 
-    // Apply the referral
+    const maxReferrals = referralSettings.maxReferrals ?? 0;
+    if (maxReferrals > 0 && (inviter.referralsCount || 0) >= maxReferrals) {
+      return { success: false, error: "Inviter has reached the maximum number of referrals" };
+    }
+
     newUser.invitedBy = parsedCode;
-    // Mark reward as granted immediately since we reward on signup
     newUser.referralRewardGranted = true;
 
-    // If newUser is already a mongoose document, save it
     if (typeof newUser.save === "function") {
       await newUser.save();
     }
 
-    // Determine reward field based on settings
-    const rewardType = referralSettings.rewardType || "points";
-    const rewardAmount = referralSettings.rewardAmount || 50;
+    const rewardAmount = referralSettings.rewardAmount ?? 50;
 
-    const rewardField =
-      {
-        points: "points",
-        balance: "balance",
-        spins: "available_spins",
-      }[rewardType] || "points";
-
-    // Increment inviter's referral count AND give them the reward immediately
     await User.findByIdAndUpdate(inviter._id, {
-      $inc: {
-        referralsCount: 1,
-        [rewardField]: rewardAmount,
-        referralRewards: rewardAmount,
-      },
+      $inc: { referralsCount: 1, referralRewards: rewardAmount },
     });
-
-    console.log(
-      `🎁 Referral reward granted: ${inviter.name} received ${rewardAmount} ${rewardType} for inviting new user`
+    await Wallet.findOneAndUpdate(
+      { user: inviter._id },
+      { $inc: { bonus: rewardAmount } }
     );
 
-    // Apply new user bonus if configured
-    if (referralSettings.newUserBonus > 0) {
-      const bonusField = {
-        points: "points",
-        balance: "balance",
-        spins: "available_spins",
-      }[referralSettings.newUserBonusType || "points"];
-
-      if (typeof newUser.save === "function") {
-        newUser[bonusField] =
-          (newUser[bonusField] || 0) + referralSettings.newUserBonus;
-        await newUser.save();
-        console.log(
-          `🎁 New user bonus: ${newUser.name} received ${
-            referralSettings.newUserBonus
-          } ${referralSettings.newUserBonusType || "points"}`
-        );
-      }
-    }
+    console.log(
+      `🎁 Referral reward granted: ${inviter.name} received ${rewardAmount} bonus for inviting new user`
+    );
 
     console.log(
       `✅ Referral applied: User ${newUser._id} invited by ${inviter.referralNumber}`
@@ -159,7 +131,6 @@ export const applyReferral = async (newUser, referralCode) => {
         name: inviter.name,
         referralNumber: inviter.referralNumber,
         rewardAmount,
-        rewardType,
       },
     };
   } catch (error) {
@@ -214,31 +185,21 @@ export const rewardInviterIfEligible = async (userId) => {
       return { success: true, rewarded: false };
     }
 
-    // Determine reward field based on settings
-    const rewardType = referralSettings.rewardType || "points";
-    const rewardAmount = referralSettings.rewardAmount || 50;
+    const rewardAmount = referralSettings.rewardAmount ?? 50;
 
-    const rewardField =
-      {
-        points: "points",
-        balance: "balance",
-        spins: "available_spins",
-      }[rewardType] || "points";
-
-    // Apply reward to inviter (for legacy users who weren't rewarded on signup)
     await User.findByIdAndUpdate(inviter._id, {
-      $inc: {
-        [rewardField]: rewardAmount,
-        referralRewards: rewardAmount,
-      },
+      $inc: { referralRewards: rewardAmount },
     });
+    await Wallet.findOneAndUpdate(
+      { user: inviter._id },
+      { $inc: { bonus: rewardAmount } }
+    );
 
-    // Mark reward as granted
     user.referralRewardGranted = true;
     await user.save();
 
     console.log(
-      `🎁 [legacy] Referral reward granted: ${inviter.name} received ${rewardAmount} ${rewardType} for inviting ${user.name}`
+      `🎁 [legacy] Referral reward granted: ${inviter.name} received ${rewardAmount} bonus for inviting ${user.name}`
     );
 
     return {
@@ -248,7 +209,6 @@ export const rewardInviterIfEligible = async (userId) => {
         id: inviter._id,
         name: inviter.name,
         rewardAmount,
-        rewardType,
       },
     };
   } catch (error) {

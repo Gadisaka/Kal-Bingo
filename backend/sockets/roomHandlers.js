@@ -33,7 +33,6 @@ import WalletTransaction from "../model/walletTransaction.js";
 import Settings from "../model/settings.js";
 import Revenue from "../model/revenue.js";
 import { checkDailyStreak } from "../utils/streak.js";
-import { awardGamePoints } from "../utils/points.js";
 import { logGameWin } from "../utils/walletTransaction.js";
 import {
   incrementGamesPlayed,
@@ -299,24 +298,6 @@ function startNumberCallingInterval(io, roomId) {
           });
 
           if (!finishedExists) {
-            // Award participation points
-            try {
-              const participantIds = Array.isArray(room.joinedPlayers)
-                ? room.joinedPlayers.map((p) =>
-                    String(p.userId || p._id || p.id || p)
-                  )
-                : [];
-              await awardGamePoints({
-                playerIds: participantIds,
-                gameType: "system",
-                roomId,
-              });
-            } catch (pointsErr) {
-              console.error(
-                "[points] award error (system no-winner):",
-                pointsErr.message
-              );
-            }
 
             // Update or create game history
             const playingHistory = await GameHistory.findOne({
@@ -566,23 +547,11 @@ async function checkAndClaimBotBingo(io, roomId) {
           (typeof room.betAmount === "number" ? room.betAmount : 0) *
           totalCartelas;
 
-        // Instant placeholder points for display (real calculation happens in background)
-        const participantIds = Array.isArray(room.joinedPlayers)
-          ? room.joinedPlayers.map((p) =>
-              String(p.userId || p._id || p.id || p)
-            )
-          : [];
-        const instantPointsAwarded = {};
-        participantIds.forEach((pid) => {
-          instantPointsAwarded[pid] = String(pid) === String(userId) ? 320 : 20;
-        });
-
         // 🚀 EMIT WINNER IMMEDIATELY - no blocking operations!
         io.to(roomId).emit("bingo-winner", {
           roomId,
           winner: winnerData,
-          prize: rawPot, // Raw pot for instant display, real prize calculated in background
-          pointsAwarded: instantPointsAwarded,
+          prize: rawPot,
         });
 
         // Broadcast room update immediately
@@ -625,27 +594,6 @@ async function checkAndClaimBotBingo(io, roomId) {
               gameStatus: "finished",
             });
             if (!exists) {
-              // Award points (real calculation in background)
-              const participantIds = Array.isArray(finalRoomData.joinedPlayers)
-                ? finalRoomData.joinedPlayers.map((p) =>
-                    String(p.userId || p._id || p.id || p)
-                  )
-                : [];
-
-              try {
-                await awardGamePoints({
-                  playerIds: participantIds,
-                  winnerId: String(finalUserId),
-                  gameType: "system",
-                  roomId: finalRoomId,
-                });
-              } catch (pointsErr) {
-                console.error(
-                  "[points] award error (bot winner):",
-                  pointsErr.message
-                );
-              }
-
               // Track games played and process referral rewards for all human participants
               try {
                 for (const playerId of participantIds) {
@@ -1365,27 +1313,6 @@ export function registerRoomHandlers(io, socket) {
             gameStatus: "finished",
           });
           if (!exists) {
-            try {
-              const participantIds = Array.isArray(room.joinedPlayers)
-                ? room.joinedPlayers.map((p) =>
-                    String(p.userId || p._id || p.id || p)
-                  )
-                : [];
-              const winnerIdForPoints = winner?.userId || room.winner?.userId;
-              await awardGamePoints({
-                playerIds: participantIds,
-                winnerId: winnerIdForPoints
-                  ? String(winnerIdForPoints)
-                  : undefined,
-                gameType: "system",
-                roomId,
-              });
-            } catch (pointsErr) {
-              console.error(
-                "[points] award error (system finished):",
-                pointsErr.message
-              );
-            }
             // Prefer updating existing 'playing' entry to avoid duplicates
             const playingHistory = await GameHistory.findOne({
               roomId,
@@ -1712,23 +1639,11 @@ export function registerRoomHandlers(io, socket) {
           (typeof room.betAmount === "number" ? room.betAmount : 0) *
           totalCartelas;
 
-        // Instant placeholder points for display (real calculation happens in background)
-        const participantIds = Array.isArray(room.joinedPlayers)
-          ? room.joinedPlayers.map((p) =>
-              String(p.userId || p._id || p.id || p)
-            )
-          : [];
-        const instantPointsAwarded = {};
-        participantIds.forEach((pid) => {
-          instantPointsAwarded[pid] = String(pid) === String(userId) ? 320 : 20;
-        });
-
         // 🚀 EMIT WINNER IMMEDIATELY - no blocking operations!
         io.to(roomId).emit("bingo-winner", {
           roomId,
           winner: winnerData,
-          prize: rawPot, // Raw pot for instant display, real prize calculated in background
-          pointsAwarded: instantPointsAwarded,
+          prize: rawPot,
         });
 
         // 🔄 Do remaining heavy database operations in background (non-blocking)
@@ -1768,27 +1683,6 @@ export function registerRoomHandlers(io, socket) {
               gameStatus: "finished",
             });
             if (!exists) {
-              // Award points (real calculation in background)
-              const participantIds = Array.isArray(finalRoomData.joinedPlayers)
-                ? finalRoomData.joinedPlayers.map((p) =>
-                    String(p.userId || p._id || p.id || p)
-                  )
-                : [];
-
-              try {
-                await awardGamePoints({
-                  playerIds: participantIds,
-                  winnerId: String(finalUserId),
-                  gameType: "system",
-                  roomId: finalRoomId,
-                });
-              } catch (pointsErr) {
-                console.error(
-                  "[points] award error (system winner):",
-                  pointsErr.message
-                );
-              }
-
               // Track games played and process referral rewards for all human participants
               try {
                 for (const playerId of participantIds) {

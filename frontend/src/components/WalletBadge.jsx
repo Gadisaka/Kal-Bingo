@@ -52,9 +52,9 @@ export default function WalletBadge() {
   if (!user) return null;
 
   return (
-    <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+    <div className="absolute top-4 left-4 z-50 flex items-center gap-2">
       <div className="flex flex-col items-end gap-2"></div>
-      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/80 px-3 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur">
+      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/10 px-3 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.35)] backdrop-blur">
         <img src={WalletImg} alt="wallet" className="w-6 h-6" />
         <div className="text-sm font-semibold text-white min-w-[72px]">
           {loading ? "..." : display}

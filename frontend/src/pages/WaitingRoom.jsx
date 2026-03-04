@@ -14,6 +14,12 @@ import {
 } from "lucide-react";
 import WalletBadge from "../components/WalletBadge";
 
+const UI_COLORS = {
+  base: "#1E2330",
+  surface: "#F2F2EC",
+  accent: "#3A7A45",
+};
+
 export default function WaitingRoom() {
   const { gameRoomId } = useParams();
   const { user } = useAuth();
@@ -76,12 +82,12 @@ export default function WaitingRoom() {
         console.log(
           "Previous takenCartelas:",
           Object.keys(prevTaken).length,
-          "cartelas"
+          "cartelas",
         );
         console.log(
           "Setting new takenCartelas:",
           Object.keys(allCartelas).length,
-          "cartelas"
+          "cartelas",
         );
         return allCartelas;
       });
@@ -101,7 +107,7 @@ export default function WaitingRoom() {
       } else {
         // Another player selected a cartela I had selected
         console.log(
-          `Player ${userId} selected cartela #${cartelaId}, removing from own selection if present`
+          `Player ${userId} selected cartela #${cartelaId}, removing from own selection if present`,
         );
         setSelectedCartelas((prev) => prev.filter((id) => id !== cartelaId));
       }
@@ -168,12 +174,12 @@ export default function WaitingRoom() {
         "Received system:roomUpdate for room:",
         updatedRoom.id,
         "status:",
-        updatedRoom.status
+        updatedRoom.status,
       );
       if (updatedRoom.id === gameRoomId) {
         console.log(
           "Room update matches our room ID, updating state, new status:",
-          updatedRoom.status
+          updatedRoom.status,
         );
         setRoom(updatedRoom);
         setHasReceivedUpdate(true);
@@ -197,7 +203,7 @@ export default function WaitingRoom() {
     const handleCountdownUpdate = ({ roomId, seconds }) => {
       if (roomId === gameRoomId) {
         setRoom((prev) =>
-          prev ? { ...prev, expiresAt: Date.now() + seconds * 1000 } : prev
+          prev ? { ...prev, expiresAt: Date.now() + seconds * 1000 } : prev,
         );
 
         // Show warning at 10 seconds if player has no cartelas
@@ -229,13 +235,13 @@ export default function WaitingRoom() {
         // Update selected cartelas for current user if they were auto-assigned
         const currentUserId = user?.id;
         const myAssignment = assignments.find(
-          (a) => String(a.userId) === String(currentUserId)
+          (a) => String(a.userId) === String(currentUserId),
         );
         if (myAssignment) {
           setSelectedCartelas([myAssignment.cartelaId]);
           setIsSelectionLocked(true);
           console.log(
-            `✅ Auto-assigned cartela #${myAssignment.cartelaId} to you`
+            `✅ Auto-assigned cartela #${myAssignment.cartelaId} to you`,
           );
         }
       }
@@ -265,7 +271,7 @@ export default function WaitingRoom() {
     };
     const handleGameStart = ({ roomId }) => {
       console.log(
-        `🎮 Received game:start event for room ${roomId}, current room: ${gameRoomId}`
+        `🎮 Received game:start event for room ${roomId}, current room: ${gameRoomId}`,
       );
       if (roomId === gameRoomId) {
         console.log(`✅ Match! Navigating to /playing/${roomId}`);
@@ -278,7 +284,7 @@ export default function WaitingRoom() {
         const gameStake = currentRoom?.betAmount ?? 0;
         const gamePrize = Math.max(
           0,
-          gameStake * totalCartelas * (1 - currentWinCut / 100)
+          gameStake * totalCartelas * (1 - currentWinCut / 100),
         );
         navigate(`/playing/${roomId}`, {
           state: {
@@ -355,7 +361,7 @@ export default function WaitingRoom() {
     if (room && room.expiresAt) {
       // Set initial seconds left
       setSecondsLeft(
-        Math.max(0, Math.ceil((room.expiresAt - Date.now()) / 1000))
+        Math.max(0, Math.ceil((room.expiresAt - Date.now()) / 1000)),
       );
       // Interval for real-time countdown
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -365,14 +371,14 @@ export default function WaitingRoom() {
 
         const seconds = Math.max(
           0,
-          Math.ceil((currentRoom.expiresAt - Date.now()) / 1000)
+          Math.ceil((currentRoom.expiresAt - Date.now()) / 1000),
         );
         setSecondsLeft(seconds);
 
         // Check if timer reached 0 and only one player (backup check)
         if (seconds === 0 && currentRoom.joinedPlayers?.length === 1) {
           console.log(
-            "⏸️ Timer reached 0 locally with one player, showing modal"
+            "⏸️ Timer reached 0 locally with one player, showing modal",
           );
           setShowWaitModal(true);
         }
@@ -443,7 +449,7 @@ export default function WaitingRoom() {
       if (Array.isArray(room.joinedPlayers)) {
         console.log(
           "Joined userIds:",
-          room.joinedPlayers.map((p) => p.userId)
+          room.joinedPlayers.map((p) => p.userId),
         );
         console.log("Current user ID:", user?.id);
       }
@@ -482,7 +488,7 @@ export default function WaitingRoom() {
       const gameStake = room?.betAmount ?? 0;
       const gamePrize = Math.max(
         0,
-        gameStake * totalCartelas * (1 - currentWinCut / 100)
+        gameStake * totalCartelas * (1 - currentWinCut / 100),
       );
       navigate(`/playing/${room.id}`, {
         state: {
@@ -594,11 +600,11 @@ export default function WaitingRoom() {
   const pot = stake * selectedCount;
   const displayPrize = Math.max(
     0,
-    pot - (pot * Math.max(0, Number(winCutPercent) || 0)) / 100
+    pot - (pot * Math.max(0, Number(winCutPercent) || 0)) / 100,
   );
   const currentSelectedCartela = selectedCartelas[currentCartelaIndex];
   const selectedCard = bingoCards.find(
-    (card) => card.id === currentSelectedCartela
+    (card) => card.id === currentSelectedCartela,
   );
 
   const currentPlayer = room?.joinedPlayers?.[currentPlayerIndex];
@@ -615,7 +621,7 @@ export default function WaitingRoom() {
     if (isSelectionLocked) {
       console.warn("Cartela selection is locked");
       setSelectionError(
-        "Cartela selection is locked. You have been assigned a cartela automatically."
+        "Cartela selection is locked. You have been assigned a cartela automatically.",
       );
       setTimeout(() => setSelectionError(null), 3000);
       return;
@@ -678,7 +684,7 @@ export default function WaitingRoom() {
       if (isTakenByOther) {
         console.warn(`Cartela #${num} already taken by`, takenCartelas[num]);
         setSelectionError(
-          `Cartela #${num} is already selected by ${takenCartelas[num].userName}`
+          `Cartela #${num} is already selected by ${takenCartelas[num].userName}`,
         );
         setTimeout(() => setSelectionError(null), 3000);
         return;
@@ -711,7 +717,7 @@ export default function WaitingRoom() {
   const prevCartela = () => {
     if (selectedCartelas.length) {
       setCurrentCartelaIndex((prev) =>
-        prev === 0 ? selectedCartelas.length - 1 : prev - 1
+        prev === 0 ? selectedCartelas.length - 1 : prev - 1,
       );
     }
   };
@@ -724,21 +730,23 @@ export default function WaitingRoom() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-sky-950 text-white">
+    <div
+      className="relative min-h-screen overflow-hidden"
+      style={{ backgroundColor: UI_COLORS.base, color: UI_COLORS.surface }}
+    >
       <WalletBadge />
-      <div className="absolute -top-40 -right-40 h-[460px] w-[460px] rounded-full bg-sky-500/20 blur-3xl" />
-      <div className="absolute -bottom-48 -left-32 h-[520px] w-[520px] rounded-full bg-sky-400/15 blur-[140px]" />
       <div className="absolute inset-0 pointer-events-none">
         {backgroundStars.map((star) => (
           <StarIcon
             key={star.id}
-            className="absolute text-sky-200/40"
+            className="absolute"
             style={{
               left: `${star.left}%`,
               top: `${star.top}%`,
               width: `${star.size}px`,
               height: `${star.size}px`,
               opacity: star.opacity,
+              color: UI_COLORS.accent,
               animation: `twinkle ${star.duration}s ease-in-out infinite`,
               animationDelay: `${star.delay}s`,
             }}
@@ -747,98 +755,150 @@ export default function WaitingRoom() {
       </div>
 
       <div className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 py-10 space-y-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+        <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="mt-4 text-3xl sm:text-4xl font-black tracking-tight">
-              Waiting Room
+              Waiting
             </h1>
-            <p className="text-sky-200/70 text-sm sm:text-base mt-1">
-              Room ID:{" "}
-              <span className="font-semibold text-sky-200">{gameRoomId}</span>
+            <p
+              className="text-sm sm:text-base mt-1"
+              style={{ color: UI_COLORS.surface }}
+            >
+              Room <span className="font-semibold">{gameRoomId}</span>
             </p>
           </div>
+          <button
+            onClick={leaveRoom}
+            className="inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-xs sm:text-sm font-black transition-all duration-300 hover:scale-105 border h-fit mt-4 shrink-0"
+            style={{
+              backgroundColor: UI_COLORS.base,
+              color: UI_COLORS.surface,
+              borderColor: UI_COLORS.accent,
+            }}
+          >
+            <ArrowLeftCircle className="h-4 w-4" /> Leave
+          </button>
         </div>
 
         {selectionError && (
-          <div className="rounded-2xl border border-red-500/40 bg-red-500/15 px-4 py-3 text-sm sm:text-base text-red-200">
+          <div
+            className="rounded-2xl border px-4 py-3 text-sm sm:text-base"
+            style={{
+              borderColor: UI_COLORS.accent,
+              backgroundColor: UI_COLORS.surface,
+              color: UI_COLORS.base,
+            }}
+          >
             {selectionError}
           </div>
         )}
 
-        <div className="flex justify-center gap-6 items-center w-full">
-          {/* <div className="rounded-2xl border border-sky-400/30 bg-slate-900/60 p-4 shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-sky-200/70">
-                  Stake
-                </p>
-                <p className="mt-2 text-2xl font-bold text-white">${stake}</p>
-              </div>
-              <div className="rounded-xl bg-sky-500/20 p-3">
-                <Coins className="h-6 w-6 text-sky-200" />
-              </div>
-            </div>
-          </div> */}
-          <div className="flex flex-col gap-4 justify-center items-center">
-            <div className="rounded-2xl border border-sky-400/30 bg-slate-900/60 p-4 shadow-lg">
+        <div className="w-full max-w-3xl mx-auto flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div
+              className="rounded-2xl border px-3 py-2.5 shadow-lg"
+              style={{
+                borderColor: UI_COLORS.accent,
+                backgroundColor: UI_COLORS.surface,
+              }}
+            >
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  {/* <p className="text-xs uppercase tracking-widest text-sky-200/70">
-                    Prize Pool
-                  </p> */}
-                  <p className="mt-2 text-2xl font-bold text-white">
+                  <p
+                    className="text-[10px] uppercase tracking-widest font-black"
+                    style={{ color: UI_COLORS.base }}
+                  >
+                    Prize
+                  </p>
+                  <p
+                    className="mt-1 text-2xl font-black"
+                    style={{ color: UI_COLORS.base }}
+                  >
                     ${displayPrize}
                   </p>
                 </div>
-                <div className="rounded-xl bg-amber-400/20 p-3">
-                  <Trophy className="h-6 w-6 text-amber-300" />
+                <div
+                  className="rounded-xl p-2.5"
+                  style={{ backgroundColor: UI_COLORS.accent }}
+                >
+                  <Trophy className="h-5 w-5 text-[#F2F2EC]" />
                 </div>
               </div>
             </div>
-            <div className="rounded-2xl border border-sky-400/30 bg-slate-900/60 p-4 shadow-lg">
+            <div
+              className="rounded-2xl border px-3 py-2.5 shadow-lg"
+              style={{
+                borderColor: UI_COLORS.accent,
+                backgroundColor: UI_COLORS.surface,
+              }}
+            >
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-xs uppercase tracking-widest text-sky-200/70"></p>
-                  <p className="mt-2 text-2xl font-bold text-white">
+                  <p
+                    className="text-[10px] uppercase tracking-widest font-black"
+                    style={{ color: UI_COLORS.base }}
+                  >
+                    Timer
+                  </p>
+                  <p
+                    className="mt-1 text-2xl font-black"
+                    style={{ color: UI_COLORS.base }}
+                  >
                     {room?.status === "waiting" && room?.expiresAt
                       ? `${secondsLeft ?? "-"}s`
                       : "--"}
                   </p>
                 </div>
-                <div className="rounded-xl bg-sky-500/20 p-3">
-                  <TimerIcon className="h-6 w-6 text-sky-200" />
+                <div
+                  className="rounded-xl p-2.5"
+                  style={{ backgroundColor: UI_COLORS.base }}
+                >
+                  <TimerIcon className="h-5 w-5 text-[#F2F2EC]" />
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-sky-400/30 bg-slate-900/60 p-4 shadow-lg">
-            <div className="flex items-center justify-between gap-6 ">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-sky-200/70">
-                  Players
-                </p>
-                {/* <p className="mt-2 text-2xl font-bold text-white">
-                  {playerCount}/100
-                </p> */}
-              </div>
-              <div className="rounded-xl bg-green-400/20 p-3">
-                <Users className="h-6 w-6 text-green-300" />
+          <div
+            className="rounded-2xl border px-3 py-2.5 shadow-lg"
+            style={{
+              borderColor: UI_COLORS.accent,
+              backgroundColor: UI_COLORS.surface,
+            }}
+          >
+            <div className="flex items-center justify-between gap-4">
+              <p
+                className="text-[10px] uppercase tracking-widest font-black"
+                style={{ color: UI_COLORS.base }}
+              >
+                Players
+              </p>
+              <div
+                className="rounded-xl p-2.5"
+                style={{ backgroundColor: UI_COLORS.accent }}
+              >
+                <Users className="h-5 w-5 text-[#F2F2EC]" />
               </div>
             </div>
-            <div className="mt-4 flex items-center justify-center rounded-xl border border-sky-500/30 bg-slate-900/70 p-3">
-              <div className="flex-1 px-3 text-center text-sm sm:text-base">
+            <div
+              className="mt-2.5 flex items-center justify-center rounded-xl border px-3 py-2"
+              style={{
+                borderColor: UI_COLORS.accent,
+                backgroundColor: UI_COLORS.base,
+              }}
+            >
+              <div className="flex-1 px-2 text-center text-sm sm:text-base">
                 {currentPlayer ? (
                   <div className="flex flex-col items-center">
-                    <span className="text-xs text-sky-200/70">Player</span>
-                    <span className="mt-1 text-lg font-semibold text-white">
+                    <span className="text-[10px] font-bold text-[#F2F2EC]">Player</span>
+                    <span className="mt-0.5 text-lg font-black text-[#F2F2EC]">
                       {maskPlayerName(
-                        currentPlayer.username ?? currentPlayer.userId
+                        currentPlayer.username ?? currentPlayer.userId,
                       )}
                     </span>
                   </div>
                 ) : (
-                  <span className="text-sky-200/50">No players yet</span>
+                  <span className="font-bold text-[#F2F2EC]">No players</span>
                 )}
               </div>
             </div>
@@ -846,31 +906,55 @@ export default function WaitingRoom() {
         </div>
 
         {showCountdownWarning && selectedCartelas.length === 0 && (
-          <p className="mt-3 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
-            Choose a cartela or one will be assigned automatically.
+          <p
+            className="mt-3 rounded-xl border px-3 py-2 text-xs"
+            style={{
+              borderColor: UI_COLORS.accent,
+              backgroundColor: UI_COLORS.surface,
+              color: UI_COLORS.base,
+            }}
+          >
+            Pick one card or auto-pick starts.
           </p>
         )}
 
-        <div className="rounded-3xl border border-sky-400/30 bg-slate-900/60 p-5 shadow-[0_24px_60px_rgba(56,189,248,0.25)] space-y-5">
+        <div
+          className="rounded-3xl border p-5 space-y-5"
+          style={{
+            borderColor: UI_COLORS.accent,
+            backgroundColor: UI_COLORS.surface,
+          }}
+        >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg sm:text-xl font-semibold"></h2>
-              Select Your Cartelas
-              <p className="text-sm text-sky-200/70">
+              Pick cards
+              <p className="text-sm" style={{ color: UI_COLORS.base }}>
                 {isSelectionLocked
-                  ? "Selection locked - cartela auto-assigned"
-                  : "Tap numbers to add or remove from your selection"}
+                  ? "Locked - auto-picked"
+                  : "Tap to select or remove"}
               </p>
             </div>
-            <div className="flex items-center gap-2 rounded-full border border-sky-500/30 bg-slate-900/70 px-4 py-2 text-sm text-sky-200">
-              <span className="font-semibold text-sky-100">
-                {selectedCartelas.length}
-              </span>
+            <div
+              className="flex items-center gap-2 rounded-full border px-4 py-2 text-sm"
+              style={{
+                borderColor: UI_COLORS.accent,
+                backgroundColor: UI_COLORS.base,
+                color: UI_COLORS.surface,
+              }}
+            >
+              <span className="font-semibold">{selectedCartelas.length}</span>
               selected
             </div>
           </div>
 
-          <div className="rounded-2xl border border-sky-500/20 bg-slate-900/70 p-4 h-72 sm:h-80 overflow-y-auto">
+          <div
+            className="rounded-2xl border p-4 h-72 sm:h-80 overflow-y-auto"
+            style={{
+              borderColor: UI_COLORS.accent,
+              backgroundColor: UI_COLORS.base,
+            }}
+          >
             <div className="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-15 gap-2">
               {Array.from({ length: 150 }, (_, i) => i + 1).map((num) => {
                 const isSelected = selectedCartelas.includes(num);
@@ -889,29 +973,41 @@ export default function WaitingRoom() {
                       isSelectionLocked
                         ? "Selection is locked"
                         : isTakenByOther
-                        ? `Selected by ${takenCartelas[num].userName}`
-                        : isTakenByMe
-                        ? "Selected by you"
-                        : "Click to select"
+                          ? `Selected by ${takenCartelas[num].userName}`
+                          : isTakenByMe
+                            ? "Selected by you"
+                            : "Click to select"
                     }
                     className={`relative flex h-12 items-center justify-center rounded-xl border text-sm font-semibold transition-all
                       ${
                         isSelected || isTakenByMe
-                          ? "border-sky-400 bg-sky-500/20 text-white shadow-lg shadow-sky-500/30"
+                          ? "text-white"
                           : isTakenByOther
-                          ? "border-slate-700 bg-slate-800/80 text-slate-500 cursor-not-allowed"
-                          : "border-slate-600 bg-slate-900/80 text-sky-200 hover:border-sky-400 hover:bg-sky-500/15"
+                            ? "text-white cursor-not-allowed"
+                            : "text-white"
                       }
                     `}
+                    style={{
+                      borderColor: UI_COLORS.accent,
+                      backgroundColor:
+                        isSelected || isTakenByMe
+                          ? UI_COLORS.accent
+                          : isTakenByOther
+                            ? "#394155"
+                            : UI_COLORS.base,
+                    }}
                   >
                     {num}
                     {(isSelected || isTakenByMe) && (
-                      <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white shadow-lg">
+                      <span
+                        className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white shadow-lg"
+                        style={{ backgroundColor: UI_COLORS.accent }}
+                      >
                         ✓
                       </span>
                     )}
                     {isTakenByOther && (
-                      <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white shadow-lg">
+                      <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#1E2330] text-xs font-bold text-white shadow-lg">
                         ✗
                       </span>
                     )}
@@ -922,20 +1018,37 @@ export default function WaitingRoom() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-sky-400/30 bg-slate-900/60 p-5 shadow-[0_24px_60px_rgba(56,189,248,0.25)]">
+        <div
+          className="rounded-3xl border p-5"
+          style={{
+            borderColor: UI_COLORS.accent,
+            backgroundColor: UI_COLORS.surface,
+          }}
+        >
           <div className="flex items-center justify-between">
             <button
               onClick={prevCartela}
               disabled={selectedCartelas.length <= 1}
-              className="rounded-2xl border border-sky-500/30 bg-slate-900/60 p-3 text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-2xl border p-3 transition disabled:cursor-not-allowed disabled:opacity-40"
+              style={{
+                borderColor: UI_COLORS.accent,
+                backgroundColor: UI_COLORS.base,
+                color: UI_COLORS.surface,
+              }}
             >
               ◀
             </button>
             <div className="text-center">
-              <p className="text-sm uppercase tracking-widest text-sky-200/70">
-                Active Cartela
+              <p
+                className="text-sm uppercase tracking-widest"
+                style={{ color: UI_COLORS.base }}
+              >
+                Card
               </p>
-              <h3 className="mt-1 text-xl font-semibold text-white">
+              <h3
+                className="mt-1 text-xl font-semibold"
+                style={{ color: UI_COLORS.base }}
+              >
                 #{currentSelectedCartela || "--"} (
                 {selectedCartelas.length || 0}
                 selected)
@@ -944,7 +1057,12 @@ export default function WaitingRoom() {
             <button
               onClick={nextCartela}
               disabled={selectedCartelas.length <= 1}
-              className="rounded-2xl border border-sky-500/30 bg-slate-900/60 p-3 text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-2xl border p-3 transition disabled:cursor-not-allowed disabled:opacity-40"
+              style={{
+                borderColor: UI_COLORS.accent,
+                backgroundColor: UI_COLORS.base,
+                color: UI_COLORS.surface,
+              }}
             >
               ▶
             </button>
@@ -956,13 +1074,23 @@ export default function WaitingRoom() {
                 {["B", "I", "N", "G", "O"].map((letter) => (
                   <div
                     key={letter}
-                    className="rounded-t-xl bg-sky-500 text-center py-2 font-bold text-lg tracking-widest"
+                    className="rounded-t-xl text-center py-2 font-bold text-lg tracking-widest"
+                    style={{
+                      backgroundColor: UI_COLORS.base,
+                      color: UI_COLORS.surface,
+                    }}
                   >
                     {letter}
                   </div>
                 ))}
               </div>
-              <div className="grid grid-cols-5 gap-1 rounded-b-xl border border-sky-500/40 bg-slate-950/60 p-2">
+              <div
+                className="grid grid-cols-5 gap-1 rounded-b-xl border p-2"
+                style={{
+                  borderColor: UI_COLORS.accent,
+                  backgroundColor: UI_COLORS.surface,
+                }}
+              >
                 {Array.from({ length: 5 }).map((_, rowIdx) => (
                   <>
                     {["B", "I", "N", "G", "O"].map((col) => {
@@ -972,12 +1100,14 @@ export default function WaitingRoom() {
                         <div
                           key={col + rowIdx}
                           className={`flex aspect-square items-center justify-center rounded-lg border-2 text-lg font-semibold
-                            ${
-                              isFree
-                                ? "border-amber-400 bg-amber-400/20 text-amber-200"
-                                : "border-sky-500/20 bg-slate-900/80 text-sky-100"
-                            }
+                            ${isFree ? "text-[#F2F2EC]" : "text-[#1E2330]"}
                           `}
+                          style={{
+                            borderColor: UI_COLORS.accent,
+                            backgroundColor: isFree
+                              ? UI_COLORS.accent
+                              : UI_COLORS.surface,
+                          }}
                         >
                           {value}
                         </div>
@@ -988,42 +1118,54 @@ export default function WaitingRoom() {
               </div>
             </div>
           ) : (
-            <div className="mt-6 text-center text-sky-200/60">
-              No cartela selected yet. Pick a number to preview your card.
+            <div className="mt-6 text-center" style={{ color: UI_COLORS.base }}>
+              No card selected.
             </div>
           )}
         </div>
 
-        <div className="flex justify-center pt-6">
-          <button
-            onClick={leaveRoom}
-            className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-br from-red-500/80 to-red-600/90 px-5 py-3 text-sm sm:text-base font-semibold shadow-[0_20px_45px_rgba(239,68,68,0.35)] transition-all duration-300 hover:scale-105 hover:shadow-[0_24px_60px_rgba(239,68,68,0.45)]"
-          >
-            <ArrowLeftCircle className="h-5 w-5" /> Leave Room
-          </button>
-        </div>
       </div>
 
       {showWaitModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
-          <div className="w-full max-w-md rounded-3xl border border-sky-400/30 bg-gradient-to-br from-slate-950 to-slate-900 p-6 shadow-[0_30px_80px_rgba(56,189,248,0.35)]">
-            <h2 className="text-2xl font-bold text-white">Time's up!</h2>
-            <p className="mt-3 text-sky-200/80">
-              You're the only player in this room. Would you like to wait for
-              more challengers or head back to the lobby?
+          <div
+            className="w-full max-w-md rounded-3xl border p-6"
+            style={{
+              borderColor: UI_COLORS.accent,
+              backgroundColor: UI_COLORS.surface,
+            }}
+          >
+            <h2
+              className="text-2xl font-bold"
+              style={{ color: UI_COLORS.base }}
+            >
+              Time up
+            </h2>
+            <p className="mt-3" style={{ color: UI_COLORS.base }}>
+              Only one player. Wait more or leave?
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={handleWaitMore}
-                className="flex-1 rounded-2xl bg-gradient-to-br from-sky-500 to-sky-600 px-5 py-3 font-semibold text-white shadow-[0_20px_45px_rgba(5,175,242,0.35)] transition hover:scale-[1.02] hover:shadow-[0_26px_60px_rgba(5,175,242,0.45)]"
+                className="flex-1 rounded-2xl px-5 py-3 font-semibold transition hover:scale-[1.02] border"
+                style={{
+                  backgroundColor: UI_COLORS.accent,
+                  color: UI_COLORS.surface,
+                  borderColor: UI_COLORS.base,
+                }}
               >
-                Wait More
+                Wait
               </button>
               <button
                 onClick={handleLeaveGame}
-                className="flex-1 rounded-2xl border border-red-500/50 bg-red-600/80 px-5 py-3 font-semibold text-white shadow-[0_20px_45px_rgba(248,113,113,0.35)] transition hover:scale-[1.02] hover:shadow-[0_26px_60px_rgba(248,113,113,0.45)]"
+                className="flex-1 rounded-2xl border px-5 py-3 font-semibold transition hover:scale-[1.02]"
+                style={{
+                  borderColor: UI_COLORS.accent,
+                  backgroundColor: UI_COLORS.base,
+                  color: UI_COLORS.surface,
+                }}
               >
-                Leave Game {leaveTimer > 0 && `(${leaveTimer}s)`}
+                Leave {leaveTimer > 0 && `(${leaveTimer}s)`}
               </button>
             </div>
           </div>
@@ -1032,26 +1174,44 @@ export default function WaitingRoom() {
 
       {showBackNavigationModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
-          <div className="w-full max-w-md rounded-3xl border border-sky-400/30 bg-gradient-to-br from-slate-950 to-slate-900 p-6 shadow-[0_30px_80px_rgba(56,189,248,0.35)]">
-            <h2 className="text-2xl font-bold text-white">
-              Leave Waiting Room?
+          <div
+            className="w-full max-w-md rounded-3xl border p-6"
+            style={{
+              borderColor: UI_COLORS.accent,
+              backgroundColor: UI_COLORS.surface,
+            }}
+          >
+            <h2
+              className="text-2xl font-bold"
+              style={{ color: UI_COLORS.base }}
+            >
+              Leave room?
             </h2>
-            <p className="mt-3 text-sky-200/80">
-              Are you sure you want to leave? You'll be removed from this room
-              and returned to the lobby.
+            <p className="mt-3" style={{ color: UI_COLORS.base }}>
+              You will be removed and sent to lobby.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={handleBackNavigationWait}
-                className="flex-1 rounded-2xl bg-gradient-to-br from-sky-500 to-sky-600 px-5 py-3 font-semibold text-white shadow-[0_20px_45px_rgba(5,175,242,0.35)] transition hover:scale-[1.02] hover:shadow-[0_26px_60px_rgba(5,175,242,0.45)]"
+                className="flex-1 rounded-2xl px-5 py-3 font-semibold transition hover:scale-[1.02] border"
+                style={{
+                  backgroundColor: UI_COLORS.accent,
+                  color: UI_COLORS.surface,
+                  borderColor: UI_COLORS.base,
+                }}
               >
                 Stay
               </button>
               <button
                 onClick={handleBackNavigationLeave}
-                className="flex-1 rounded-2xl border border-red-500/50 bg-red-600/80 px-5 py-3 font-semibold text-white shadow-[0_20px_45px_rgba(248,113,113,0.35)] transition hover:scale-[1.02] hover:shadow-[0_26px_60px_rgba(248,113,113,0.45)]"
+                className="flex-1 rounded-2xl border px-5 py-3 font-semibold transition hover:scale-[1.02]"
+                style={{
+                  borderColor: UI_COLORS.accent,
+                  backgroundColor: UI_COLORS.base,
+                  color: UI_COLORS.surface,
+                }}
               >
-                Leave Room
+                Leave
               </button>
             </div>
           </div>

@@ -50,20 +50,18 @@ const settingsSchema = new mongoose.Schema(
     // Referral System Settings
     referral: {
       enabled: { type: Boolean, default: true },
-      // Reward type: 'points', 'balance', or 'spins'
       rewardType: { 
         type: String, 
-        enum: ['points', 'balance', 'spins'],
-        default: 'points' 
+        enum: ['points', 'balance', 'spins', 'bonus'],
+        default: 'bonus' 
       },
-      // Reward amount given to inviter immediately when invitee signs up
       rewardAmount: { type: Number, default: 50 },
-      // Bonus for the new user who was referred (optional)
+      maxReferrals: { type: Number, default: 0 },
       newUserBonus: { type: Number, default: 0 },
       newUserBonusType: { 
         type: String, 
-        enum: ['points', 'balance', 'spins'],
-        default: 'points' 
+        enum: ['points', 'balance', 'spins', 'bonus'],
+        default: 'bonus' 
       },
     },
   },

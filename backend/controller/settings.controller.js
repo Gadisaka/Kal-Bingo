@@ -79,6 +79,13 @@ export const updateSettings = async (req, res) => {
         };
         settings.markModified("welcomeBonus");
       }
+      if (req.body.referral) {
+        settings.referral = {
+          ...settings.referral,
+          ...req.body.referral,
+        };
+        settings.markModified("referral");
+      }
 
       await settings.save();
       console.log(

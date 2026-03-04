@@ -19,87 +19,93 @@ import TransferModal from "./TransferModal";
 import DepositModal from "./DepositModal";
 import WithdrawModal from "./WithdrawModal";
 
+const UI_COLORS = {
+  base: "#1E2330",
+  surface: "#F2F2EC",
+  accent: "#3A7A45",
+};
+
 // Transaction type display config
 const txTypeConfig = {
   GAME_STAKE: {
-    title: "Game Entry",
+    title: "Stake",
     icon: CreditCard,
-    colorClass: "bg-red-500/10 text-red-500",
-    amountClass: "text-red-400",
-    badge: "GAME",
-    badgeClass: "bg-red-500/10 text-red-400",
+    colorClass: "bg-[#1E2330] text-[#F2F2EC]",
+    amountClass: "text-[#1E2330]",
+    badge: "OUT",
+    badgeClass: "bg-[#1E2330] text-[#F2F2EC]",
   },
   GAME_WIN: {
-    title: "Game Won",
+    title: "Win",
     icon: Trophy,
-    colorClass: "bg-emerald-500/10 text-emerald-500",
-    amountClass: "text-emerald-400",
-    badge: "WON",
-    badgeClass: "bg-emerald-500/10 text-emerald-400",
+    colorClass: "bg-[#3A7A45] text-[#F2F2EC]",
+    amountClass: "text-[#3A7A45]",
+    badge: "IN",
+    badgeClass: "bg-[#3A7A45] text-[#F2F2EC]",
   },
   SPIN_BONUS: {
-    title: "Spin Bonus",
+    title: "Bonus",
     icon: Gift,
-    colorClass: "bg-purple-500/10 text-purple-500",
-    amountClass: "text-purple-400",
-    badge: "BONUS",
-    badgeClass: "bg-purple-500/10 text-purple-400",
+    colorClass: "bg-[#3A7A45] text-[#F2F2EC]",
+    amountClass: "text-[#3A7A45]",
+    badge: "IN",
+    badgeClass: "bg-[#3A7A45] text-[#F2F2EC]",
   },
   DEPOSIT: {
     title: "Deposit",
     icon: ArrowDownCircle,
-    colorClass: "bg-emerald-500/10 text-emerald-500",
-    amountClass: "text-emerald-400",
-    badge: "COMPLETED",
-    badgeClass: "bg-emerald-500/10 text-emerald-400",
+    colorClass: "bg-[#3A7A45] text-[#F2F2EC]",
+    amountClass: "text-[#3A7A45]",
+    badge: "IN",
+    badgeClass: "bg-[#3A7A45] text-[#F2F2EC]",
   },
   WITHDRAWAL: {
-    title: "Withdrawal",
+    title: "Cash Out",
     icon: ArrowUpCircle,
-    colorClass: "bg-slate-700/30 text-slate-400",
-    amountClass: "text-white",
-    badge: "COMPLETED",
-    badgeClass: "bg-slate-700/30 text-slate-400",
+    colorClass: "bg-[#1E2330] text-[#F2F2EC]",
+    amountClass: "text-[#1E2330]",
+    badge: "OUT",
+    badgeClass: "bg-[#1E2330] text-[#F2F2EC]",
   },
   REFUND: {
     title: "Refund",
     icon: RotateCcw,
-    colorClass: "bg-blue-500/10 text-blue-500",
-    amountClass: "text-blue-400",
-    badge: "REFUNDED",
-    badgeClass: "bg-blue-500/10 text-blue-400",
+    colorClass: "bg-[#3A7A45] text-[#F2F2EC]",
+    amountClass: "text-[#3A7A45]",
+    badge: "IN",
+    badgeClass: "bg-[#3A7A45] text-[#F2F2EC]",
   },
   ADMIN_ADJUST: {
-    title: "Adjustment",
+    title: "Adjust",
     icon: CreditCard,
-    colorClass: "bg-slate-700/30 text-slate-400",
-    amountClass: "text-white",
+    colorClass: "bg-[#1E2330] text-[#F2F2EC]",
+    amountClass: "text-[#1E2330]",
     badge: "ADMIN",
-    badgeClass: "bg-slate-700/30 text-slate-400",
+    badgeClass: "bg-[#1E2330] text-[#F2F2EC]",
   },
   BONUS_REDEEM: {
-    title: "Bonus Redeemed",
+    title: "Redeem",
     icon: Gift,
-    colorClass: "bg-orange-500/10 text-orange-500",
-    amountClass: "text-orange-400",
-    badge: "REDEEMED",
-    badgeClass: "bg-orange-500/10 text-orange-400",
+    colorClass: "bg-[#1E2330] text-[#F2F2EC]",
+    amountClass: "text-[#1E2330]",
+    badge: "OUT",
+    badgeClass: "bg-[#1E2330] text-[#F2F2EC]",
   },
   TRANSFER_OUT: {
-    title: "Transfer Sent",
+    title: "Sent",
     icon: ArrowRightLeft,
-    colorClass: "bg-sky-500/10 text-sky-400",
-    amountClass: "text-sky-300",
+    colorClass: "bg-[#1E2330] text-[#F2F2EC]",
+    amountClass: "text-[#1E2330]",
     badge: "SENT",
-    badgeClass: "bg-sky-500/10 text-sky-300",
+    badgeClass: "bg-[#1E2330] text-[#F2F2EC]",
   },
   TRANSFER_IN: {
-    title: "Transfer Received",
+    title: "Got",
     icon: ArrowRightLeft,
-    colorClass: "bg-emerald-500/10 text-emerald-400",
-    amountClass: "text-emerald-300",
-    badge: "RECEIVED",
-    badgeClass: "bg-emerald-500/10 text-emerald-300",
+    colorClass: "bg-[#3A7A45] text-[#F2F2EC]",
+    amountClass: "text-[#3A7A45]",
+    badge: "IN",
+    badgeClass: "bg-[#3A7A45] text-[#F2F2EC]",
   },
 };
 
@@ -169,7 +175,7 @@ export default function WalletModal() {
     try {
       setLoadingTx(true);
       const resTx = await axios.get(
-        `${API_URL}/api/wallet/transactions?limit=20`
+        `${API_URL}/api/wallet/transactions?limit=20`,
       );
       setTransactions(resTx.data?.transactions || []);
     } catch (e) {
@@ -225,26 +231,46 @@ export default function WalletModal() {
       />
       {/* Backdrop */}
       <div
-        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${
+        className={`absolute inset-0 transition-opacity duration-300 ${
           isVisible ? "opacity-100" : "opacity-0"
         }`}
+        style={{ backgroundColor: "rgba(30,35,48,0.72)" }}
         onClick={handleClose}
       />
 
       {/* Slide-up Card */}
       <div
-        className={`relative z-10 w-full h-[90vh] bg-slate-950 rounded-t-[2.5rem] border-t border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] overflow-hidden transition-transform duration-300 ease-out transform ${
+        className={`relative z-10 w-full h-[90vh] rounded-t-[2.5rem] border-t overflow-hidden transition-transform duration-300 ease-out transform ${
           isVisible ? "translate-y-0" : "translate-y-full"
         }`}
+        style={{
+          backgroundColor: UI_COLORS.surface,
+          borderColor: UI_COLORS.base,
+        }}
       >
         {/* Header with Close Button */}
-        <div className="sticky top-0 z-20 bg-slate-950/80 backdrop-blur-md border-b border-white/5 px-6 py-4 flex items-center justify-between">
+        <div
+          className="sticky top-0 z-20 border-b px-6 py-4 flex items-center justify-between"
+          style={{
+            backgroundColor: UI_COLORS.surface,
+            borderColor: UI_COLORS.accent,
+          }}
+        >
           <div className="w-12" /> {/* Spacer */}
-          <div className="w-12 h-1.5 bg-slate-800 rounded-full absolute left-1/2 -translate-x-1/2 top-3" />
-          <h1 className="text-lg font-bold text-white mt-2">My Wallet</h1>
+          <div
+            className="w-12 h-1.5 rounded-full absolute left-1/2 -translate-x-1/2 top-3"
+            style={{ backgroundColor: UI_COLORS.accent }}
+          />
+          <h1
+            className="text-lg font-bold mt-2"
+            style={{ color: UI_COLORS.base }}
+          >
+            Wallet
+          </h1>
           <button
             onClick={handleClose}
-            className="p-2 -mr-2 rounded-full hover:bg-white/10 text-slate-400 transition-colors"
+            className="p-2 -mr-2 rounded-full transition-colors"
+            style={{ color: UI_COLORS.base }}
           >
             <X className="w-6 h-6" />
           </button>
@@ -253,16 +279,24 @@ export default function WalletModal() {
         {/* Scrollable Content */}
         <div className="h-full overflow-y-auto pb-24 px-6 pt-4 space-y-6">
           {/* Main Balance Card */}
-          <div className="bg-[#1a1f2e] rounded-3xl p-6 border border-white/5 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-
+          <div
+            className="rounded-3xl p-6 border relative overflow-hidden"
+            style={{
+              backgroundColor: UI_COLORS.surface,
+              borderColor: UI_COLORS.accent,
+            }}
+          >
             <div className="flex justify-between items-start mb-2 relative z-10">
-              <span className="text-slate-400 text-sm font-medium">
-                Balance (Withdrawable)
+              <span
+                className="text-sm font-medium"
+                style={{ color: UI_COLORS.base }}
+              >
+                Balance
               </span>
               <button
                 onClick={() => setShowBalance(!showBalance)}
-                className="text-slate-400 hover:text-white transition-colors"
+                className="transition-colors"
+                style={{ color: UI_COLORS.base }}
               >
                 {showBalance ? (
                   <Eye className="w-4 h-4" />
@@ -272,50 +306,89 @@ export default function WalletModal() {
               </button>
             </div>
 
-            <div className="text-4xl font-black text-white mb-8 relative z-10 tracking-tight">
-              <span className="text-2xl text-slate-500 mr-1">Br</span>
+            <div
+              className="text-4xl font-black mb-8 relative z-10 tracking-tight"
+              style={{ color: UI_COLORS.base }}
+            >
+              <span
+                className="text-2xl mr-1"
+                style={{ color: UI_COLORS.accent }}
+              >
+                Br
+              </span>
               {showBalance ? formatWhole(balance) : "****"}
             </div>
 
             <div className="flex gap-3 relative z-10">
               <button
                 onClick={() => setIsDepositOpen(true)}
-                className="flex-1 bg-[#ffd700] hover:bg-[#e6c200] text-slate-900 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-yellow-500/20"
+                className="flex-1 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 border"
+                style={{
+                  backgroundColor: UI_COLORS.accent,
+                  color: UI_COLORS.surface,
+                  borderColor: UI_COLORS.base,
+                }}
               >
-                <ArrowDownCircle className="w-5 h-5" /> Buy
+                <ArrowDownCircle className="w-5 h-5" /> Top Up
               </button>
               <button
                 onClick={() => setIsWithdrawOpen(true)}
-                className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 border border-white/5"
+                className="flex-1 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 border"
+                style={{
+                  backgroundColor: UI_COLORS.base,
+                  color: UI_COLORS.surface,
+                  borderColor: UI_COLORS.accent,
+                }}
               >
-                <ArrowUpCircle className="w-5 h-5" /> Withdraw
+                <ArrowUpCircle className="w-5 h-5" /> Cash Out
               </button>
-              <button
+              {/* <button
                 onClick={() => setIsTransferOpen(true)}
-                className="flex-1 bg-sky-600 hover:bg-sky-500 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 border border-white/5"
+                className="flex-1 font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 border"
+                style={{
+                  backgroundColor: UI_COLORS.base,
+                  color: UI_COLORS.surface,
+                  borderColor: UI_COLORS.accent,
+                }}
               >
-                <ArrowRightLeft className="w-5 h-5" /> Transfer
-              </button>
+                <ArrowRightLeft className="w-5 h-5" /> Send
+              </button> */}
             </div>
           </div>
 
           {/* Bonus Card */}
-          <div className="bg-gradient-to-br from-[#3d2b1f] to-[#1f1612] rounded-3xl p-6 border border-orange-500/20 relative overflow-hidden group">
-            <div className="absolute -right-4 -top-4 text-orange-500/5 transform group-hover:scale-110 transition-transform duration-700">
-              <Gift className="w-32 h-32" />
-            </div>
-
+          <div
+            className="rounded-3xl p-6 border relative overflow-hidden"
+            style={{
+              backgroundColor: UI_COLORS.surface,
+              borderColor: UI_COLORS.accent,
+            }}
+          >
             <div className="relative z-10">
               <div className="flex justify-between items-start mb-2">
-                <span className="text-orange-200/80 text-sm font-medium">
-                  Bonus Balance
+                <span
+                  className="text-sm font-medium"
+                  style={{ color: UI_COLORS.base }}
+                >
+                  Bonus
                 </span>
-                <div className="bg-orange-500/20 p-1.5 rounded-lg">
-                  <Gift className="w-4 h-4 text-orange-400" />
+                <div
+                  className="p-1.5 rounded-lg"
+                  style={{ backgroundColor: UI_COLORS.accent }}
+                >
+                  <Gift className="w-4 h-4 text-[#F2F2EC]" />
                 </div>
               </div>
-              <div className="text-3xl font-bold text-white mb-2 tracking-tight">
-                <span className="text-xl text-orange-500/60 mr-1">Br</span>
+              <div
+                className="text-3xl font-bold mb-2 tracking-tight"
+                style={{ color: UI_COLORS.base }}
+              >
+                <span
+                  className="text-xl mr-1"
+                  style={{ color: UI_COLORS.accent }}
+                >
+                  Br
+                </span>
                 {showBalance ? formatWhole(bonus) : "****"}
               </div>
             </div>
@@ -323,17 +396,26 @@ export default function WalletModal() {
 
           {/* Transactions */}
           <div>
-            <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4 ml-1">
-              Recent Activity
+            <h3
+              className="text-xs font-bold uppercase tracking-widest mb-4 ml-1"
+              style={{ color: UI_COLORS.base }}
+            >
+              Activity
             </h3>
             <div className="space-y-3">
               {loadingTx ? (
-                <div className="text-center py-8 text-slate-500">
-                  Loading transactions...
+                <div
+                  className="text-center py-8"
+                  style={{ color: UI_COLORS.base }}
+                >
+                  Loading...
                 </div>
               ) : transactions.length === 0 ? (
-                <div className="text-center py-8 text-slate-500">
-                  No transactions yet
+                <div
+                  className="text-center py-8"
+                  style={{ color: UI_COLORS.base }}
+                >
+                  No activity
                 </div>
               ) : (
                 transactions.map((tx) => {
@@ -345,13 +427,17 @@ export default function WalletModal() {
                     tx.type === "TRANSFER_OUT"
                       ? tx?.meta?.toName || tx?.meta?.toPhoneNumber
                       : tx.type === "TRANSFER_IN"
-                      ? tx?.meta?.fromName || tx?.meta?.fromPhoneNumber
-                      : null;
+                        ? tx?.meta?.fromName || tx?.meta?.fromPhoneNumber
+                        : null;
 
                   return (
                     <div
                       key={tx.id}
-                      className="bg-[#161b26]/80 backdrop-blur-sm p-4 rounded-2xl flex items-center justify-between border border-white/5 hover:border-white/10 transition-colors"
+                      className="p-4 rounded-2xl flex items-center justify-between border transition-colors"
+                      style={{
+                        backgroundColor: UI_COLORS.surface,
+                        borderColor: UI_COLORS.accent,
+                      }}
                     >
                       <div className="flex items-center gap-4">
                         <div
@@ -360,16 +446,25 @@ export default function WalletModal() {
                           <IconComponent className="w-6 h-6" />
                         </div>
                         <div>
-                          <div className="font-bold text-white">
+                          <div
+                            className="font-bold"
+                            style={{ color: UI_COLORS.base }}
+                          >
                             {config.title}
                           </div>
                           {counterparty && (
-                            <div className="text-xs text-slate-400 font-medium mt-0.5 truncate max-w-[200px]">
+                            <div
+                              className="text-xs font-medium mt-0.5 truncate max-w-[200px]"
+                              style={{ color: UI_COLORS.base }}
+                            >
                               {tx.type === "TRANSFER_OUT" ? "To: " : "From: "}
                               {counterparty}
                             </div>
                           )}
-                          <div className="text-xs text-slate-500 font-medium mt-0.5">
+                          <div
+                            className="text-xs font-medium mt-0.5"
+                            style={{ color: UI_COLORS.base }}
+                          >
                             {formatDate(tx.createdAt)}
                           </div>
                         </div>

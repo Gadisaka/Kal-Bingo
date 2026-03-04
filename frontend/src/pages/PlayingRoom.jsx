@@ -6,7 +6,7 @@ import React, {
   useMemo,
 } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { Volume2, VolumeX, Maximize2 } from "lucide-react";
+import { Volume2, VolumeX } from "lucide-react";
 import { Howl } from "howler";
 import { socketClient } from "../sockets/socket";
 import { bingoCards } from "../libs/BingoCards";
@@ -23,213 +23,6 @@ const BINGO_COLORS = {
   G: { hex: "#4D96FF", name: "blue" },
   O: { hex: "#FF85F3", name: "pink" },
 };
-
-// All winning patterns for bingo - each pattern is an array of {row, col} cells
-const WINNING_PATTERNS = [
-  // Horizontal rows
-  {
-    name: "Row 1",
-    cells: [
-      { row: 0, col: 0 },
-      { row: 0, col: 1 },
-      { row: 0, col: 2 },
-      { row: 0, col: 3 },
-      { row: 0, col: 4 },
-    ],
-  },
-  {
-    name: "Row 2",
-    cells: [
-      { row: 1, col: 0 },
-      { row: 1, col: 1 },
-      { row: 1, col: 2 },
-      { row: 1, col: 3 },
-      { row: 1, col: 4 },
-    ],
-  },
-  {
-    name: "Row 3",
-    cells: [
-      { row: 2, col: 0 },
-      { row: 2, col: 1 },
-      { row: 2, col: 2 },
-      { row: 2, col: 3 },
-      { row: 2, col: 4 },
-    ],
-  },
-  {
-    name: "Row 4",
-    cells: [
-      { row: 3, col: 0 },
-      { row: 3, col: 1 },
-      { row: 3, col: 2 },
-      { row: 3, col: 3 },
-      { row: 3, col: 4 },
-    ],
-  },
-  {
-    name: "Row 5",
-    cells: [
-      { row: 4, col: 0 },
-      { row: 4, col: 1 },
-      { row: 4, col: 2 },
-      { row: 4, col: 3 },
-      { row: 4, col: 4 },
-    ],
-  },
-  // Vertical columns
-  {
-    name: "Col B",
-    cells: [
-      { row: 0, col: 0 },
-      { row: 1, col: 0 },
-      { row: 2, col: 0 },
-      { row: 3, col: 0 },
-      { row: 4, col: 0 },
-    ],
-  },
-  {
-    name: "Col I",
-    cells: [
-      { row: 0, col: 1 },
-      { row: 1, col: 1 },
-      { row: 2, col: 1 },
-      { row: 3, col: 1 },
-      { row: 4, col: 1 },
-    ],
-  },
-  {
-    name: "Col N",
-    cells: [
-      { row: 0, col: 2 },
-      { row: 1, col: 2 },
-      { row: 2, col: 2 },
-      { row: 3, col: 2 },
-      { row: 4, col: 2 },
-    ],
-  },
-  {
-    name: "Col G",
-    cells: [
-      { row: 0, col: 3 },
-      { row: 1, col: 3 },
-      { row: 2, col: 3 },
-      { row: 3, col: 3 },
-      { row: 4, col: 3 },
-    ],
-  },
-  {
-    name: "Col O",
-    cells: [
-      { row: 0, col: 4 },
-      { row: 1, col: 4 },
-      { row: 2, col: 4 },
-      { row: 3, col: 4 },
-      { row: 4, col: 4 },
-    ],
-  },
-  // Diagonals
-  {
-    name: "Diagonal ↘",
-    cells: [
-      { row: 0, col: 0 },
-      { row: 1, col: 1 },
-      { row: 2, col: 2 },
-      { row: 3, col: 3 },
-      { row: 4, col: 4 },
-    ],
-  },
-  {
-    name: "Diagonal ↙",
-    cells: [
-      { row: 0, col: 4 },
-      { row: 1, col: 3 },
-      { row: 2, col: 2 },
-      { row: 3, col: 1 },
-      { row: 4, col: 0 },
-    ],
-  },
-  // X Pattern (both diagonals)
-  {
-    name: "X Pattern",
-    cells: [
-      { row: 0, col: 0 },
-      { row: 1, col: 1 },
-      { row: 2, col: 2 },
-      { row: 3, col: 3 },
-      { row: 4, col: 4 },
-      { row: 0, col: 4 },
-      { row: 1, col: 3 },
-      { row: 3, col: 1 },
-      { row: 4, col: 0 },
-    ],
-  },
-  // Inner Square (4 corners of 3x3 center)
-  {
-    name: "Inner 4",
-    cells: [
-      { row: 1, col: 1 },
-      { row: 1, col: 3 },
-      { row: 3, col: 1 },
-      { row: 3, col: 3 },
-    ],
-  },
-  // Outer Square (4 corners of 5x5)
-  {
-    name: "Outer 4",
-    cells: [
-      { row: 0, col: 0 },
-      { row: 0, col: 4 },
-      { row: 4, col: 0 },
-      { row: 4, col: 4 },
-    ],
-  },
-];
-// $
-// Animated Pattern Display Component
-const AnimatedPatternCard = React.memo(function AnimatedPatternCard() {
-  const [currentPatternIndex, setCurrentPatternIndex] = useState(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentPatternIndex((prev) => (prev + 1) % WINNING_PATTERNS.length);
-    }, 1500); // Change pattern every 1.5 seconds
-    return () => clearInterval(interval);
-  }, []);
-
-  const currentPattern = WINNING_PATTERNS[currentPatternIndex];
-  const activeCells = new Set(
-    currentPattern.cells.map((c) => `${c.row}-${c.col}`)
-  );
-
-  return (
-    <div className="flex flex-col items-center">
-      <div className="grid grid-cols-5 gap-[2px] bg-white/20 p-1 rounded-lg">
-        {Array.from({ length: 25 }).map((_, idx) => {
-          const row = Math.floor(idx / 5);
-          const col = idx % 5;
-          const isActive = activeCells.has(`${row}-${col}`);
-          const isCenter = row === 2 && col === 2;
-          return (
-            <div
-              key={idx}
-              className={`w-[8px] h-[8px] rounded-[2px] transition-all duration-300 ${
-                isActive
-                  ? "bg-yellow-300 shadow-[0_0_4px_rgba(253,224,71,0.8)]"
-                  : isCenter
-                  ? "bg-white/60"
-                  : "bg-white/20"
-              }`}
-            />
-          );
-        })}
-      </div>
-      {/* <span className="text-[8px] text-white/80 mt-1 font-bold truncate max-w-[60px]">
-        {currentPattern.name}
-      </span> */}
-    </div>
-  );
-});
 
 const getColumnForNumber = (number) => {
   if (number === null || number === undefined) return null;
@@ -249,6 +42,11 @@ const getBallData = (num) => {
 };
 
 const CARD_SWIPE_THRESHOLD_PX = 45;
+const UI_COLORS = {
+  base: "#1E2330",
+  surface: "#F2F2EC",
+  accent: "#3A7A45",
+};
 
 export default function PlayingRoom() {
   const { gameRoomId } = useParams();
@@ -298,7 +96,6 @@ export default function PlayingRoom() {
 
   // Modal/Dialog States
   const [systemWinnerData, setSystemWinnerData] = useState(null);
-  const [isNumbersDialogOpen, setIsNumbersDialogOpen] = useState(false);
 
   // Notification State
   const [notifications, setNotifications] = useState([]);
@@ -556,7 +353,7 @@ export default function PlayingRoom() {
       const myCartelas = Object.keys(allCartelas)
         .filter(
           (cartelaId) =>
-            String(allCartelas[cartelaId]?.userId) === String(userId)
+            String(allCartelas[cartelaId]?.userId) === String(userId),
         )
         .map((id) => parseInt(id, 10))
         .sort((a, b) => a - b);
@@ -565,13 +362,13 @@ export default function PlayingRoom() {
       if (
         myCartelas.length > 0 &&
         !myCartelas.includes(
-          selectedCartelasRef.current[currentCartelaIndexRef.current]
+          selectedCartelasRef.current[currentCartelaIndexRef.current],
         )
       ) {
         setCurrentCartelaIndex(0);
       }
     },
-    [userId]
+    [userId],
   );
 
   useEffect(() => {
@@ -607,13 +404,7 @@ export default function PlayingRoom() {
     if (!isMember || (!isPlaying && !isFinished && !showingWinnerModal)) {
       navigate("/");
     }
-  }, [
-    room,
-    user,
-    hasReceivedUpdate,
-    navigate,
-    systemWinnerData,
-  ]);
+  }, [room, user, hasReceivedUpdate, navigate, systemWinnerData]);
 
   // --- SOCKET LISTENERS ---
   useEffect(() => {
@@ -682,10 +473,10 @@ export default function PlayingRoom() {
     requestAnimationFrame(() =>
       setTimeout(() => {
         setCurrentCartelaIndex((prev) =>
-          prev === 0 ? totalCartelas - 1 : prev - 1
+          prev === 0 ? totalCartelas - 1 : prev - 1,
         );
         requestAnimationFrame(() => setCardTransition(""));
-      }, 300)
+      }, 300),
     );
   }, [totalCartelas]);
 
@@ -696,7 +487,7 @@ export default function PlayingRoom() {
       setTimeout(() => {
         setCurrentCartelaIndex((prev) => (prev + 1) % totalCartelas);
         requestAnimationFrame(() => setCardTransition(""));
-      }, 300)
+      }, 300),
     );
   }, [totalCartelas]);
 
@@ -792,11 +583,6 @@ export default function PlayingRoom() {
     }
   };
 
-  const earnedSystemPoints =
-    systemWinnerData?.pointsAwarded && userId
-      ? Number(systemWinnerData.pointsAwarded[String(userId)] || 0)
-      : 0;
-
   // Get initial values from navigation state (passed from waiting room)
   const navStake = navigationState?.stake;
   const navPlayerCount = navigationState?.playerCount;
@@ -810,7 +596,7 @@ export default function PlayingRoom() {
       const winCut = navWinCutPercent;
       return Math.max(0, rawPrize - (rawPrize * winCut) / 100);
     },
-    [navWinCutPercent]
+    [navWinCutPercent],
   );
 
   // Calculate prize and player count for display
@@ -826,7 +612,7 @@ export default function PlayingRoom() {
     // Secondary: count from allRoomCartelas (unique users)
     if (Object.keys(allRoomCartelas).length > 0) {
       const uniqueUsers = new Set(
-        Object.values(allRoomCartelas).map((c) => c?.userId)
+        Object.values(allRoomCartelas).map((c) => c?.userId),
       );
       return uniqueUsers.size;
     }
@@ -882,7 +668,7 @@ export default function PlayingRoom() {
   const renderWinnerCard = (
     cartelaId,
     winningCells = [],
-    calledNumbers = []
+    calledNumbers = [],
   ) => {
     if (!cartelaId) return null;
     const cardData = bingoCards[cartelaId - 1];
@@ -890,7 +676,7 @@ export default function PlayingRoom() {
 
     // Convert winningCells to Set for fast lookup
     const winningCellsSet = new Set(
-      (winningCells || []).map((cell) => `${cell.row}-${cell.col}`)
+      (winningCells || []).map((cell) => `${cell.row}-${cell.col}`),
     );
 
     const headerColors = [
@@ -925,8 +711,8 @@ export default function PlayingRoom() {
                   isWinningCell
                     ? "bg-green-400 border-green-600 border-2"
                     : isCalled
-                    ? "bg-yellow-200 border-yellow-400"
-                    : "bg-[#FFFBF0]"
+                      ? "bg-yellow-200 border-yellow-400"
+                      : "bg-[#FFFBF0]"
                 }`}
               >
                 {val === "FREE" ? (
@@ -939,8 +725,8 @@ export default function PlayingRoom() {
                       isWinningCell
                         ? "text-green-900 font-black text-xs"
                         : isCalled
-                        ? "text-yellow-900 text-xs"
-                        : "text-[#1F3B63] text-xs"
+                          ? "text-yellow-900 text-xs"
+                          : "text-[#1F3B63] text-xs"
                     }
                   >
                     {val}
@@ -951,7 +737,7 @@ export default function PlayingRoom() {
                 )}
               </div>
             );
-          })
+          }),
         )}
       </div>
     );
@@ -965,33 +751,52 @@ export default function PlayingRoom() {
   };
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-[#333] font-sans">
+    <div
+      className="flex justify-center items-center min-h-screen font-sans"
+      style={{ backgroundColor: UI_COLORS.base }}
+    >
       {/* NOTIFICATION CONTAINER */}
       <div className="fixed top-4 right-4 z-[10000] flex flex-col gap-2 w-[280px] pointer-events-none">
         {notifications.map((notification) => {
-          const typeStyles = {
-            success: "bg-green-500 text-white border-green-600",
-            error: "bg-red-500 text-white border-red-600",
-            warning: "bg-yellow-500 text-white border-yellow-600",
-            info: "bg-blue-500 text-white border-blue-600",
+          const typeSymbols = {
+            success: "OK",
+            error: "ER",
+            warning: "WR",
+            info: "IN",
           };
           return (
             <div
               key={notification.id}
-              className={`${
-                typeStyles[notification.type] || typeStyles.info
-              } rounded-xl px-4 py-3 shadow-lg border-2 pointer-events-auto animate-slide-down flex items-center justify-between gap-3`}
+              className="rounded-xl px-3 py-2.5 shadow-lg border-2 pointer-events-auto animate-slide-down flex items-center justify-between gap-2"
+              style={{
+                backgroundColor: UI_COLORS.base,
+                borderColor: UI_COLORS.accent,
+                color: UI_COLORS.surface,
+              }}
             >
-              <span className="font-bold text-sm flex-1">
-                {notification.message}
-              </span>
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div
+                  className="w-7 h-7 rounded-md border flex items-center justify-center text-[10px] font-black shrink-0"
+                  style={{
+                    borderColor: UI_COLORS.accent,
+                    backgroundColor: UI_COLORS.surface,
+                    color: UI_COLORS.base,
+                  }}
+                >
+                  {typeSymbols[notification.type] || "IN"}
+                </div>
+                <span className="font-bold text-sm leading-tight truncate">
+                  {notification.message}
+                </span>
+              </div>
               <button
                 onClick={() =>
                   setNotifications((prev) =>
-                    prev.filter((n) => n.id !== notification.id)
+                    prev.filter((n) => n.id !== notification.id),
                   )
                 }
-                className="text-white/80 hover:text-white font-bold text-lg leading-none"
+                className="font-black text-lg leading-none"
+                style={{ color: UI_COLORS.surface }}
               >
                 ×
               </button>
@@ -1001,80 +806,124 @@ export default function PlayingRoom() {
       </div>
 
       {/* PHONE FRAME */}
-      <div className="w-full max-w-[400px] h-[750px] md:h-[750px] md:rounded-[40px] md:border-[12px] md:border-[#1a1a1a] relative overflow-hidden shadow-2xl bg-gradient-to-br from-[#4facfe] to-[#00f2fe] flex flex-col">
+      <div
+        className="w-full max-w-[430px] h-[750px] md:h-[750px] md:rounded-[40px] md:border-[12px] relative overflow-hidden shadow-2xl flex flex-col"
+        style={{
+          backgroundColor: UI_COLORS.surface,
+          borderColor: UI_COLORS.base,
+        }}
+      >
         {/* --- HEADER --- */}
-        <div className="h-[30%] bg-[#00AFFF] md:rounded-b-[30px] relative flex flex-col items-center pt-2 shadow-lg z-10">
+        <div
+          className="h-[30%] md:rounded-b-[24px] relative flex flex-col items-center pt-2 shadow-lg z-10"
+          style={{ backgroundColor: UI_COLORS.base }}
+        >
           {/* Top row: Sound, Info Cards, Reload */}
           <div className="w-[95%] flex justify-between items-start gap-2">
             {/* Sound Button */}
             <div
               onClick={handleToggleSound}
-              className={`w-[36px] h-[36px] rounded-full flex items-center justify-center cursor-pointer transition-all shrink-0 ${
+              className={`w-[34px] h-[34px] rounded-full flex items-center justify-center cursor-pointer transition-all shrink-0 ${
                 !audioUnlocked
-                  ? "bg-amber-500/80 animate-pulse hover:bg-amber-500"
+                  ? "animate-pulse"
                   : isMuted
-                  ? "bg-red-500/60 hover:bg-red-500/80"
-                  : "bg-black/20 hover:bg-black/30"
+                    ? ""
+                    : ""
               }`}
+              style={{
+                backgroundColor: audioUnlocked ? UI_COLORS.accent : UI_COLORS.surface,
+              }}
               title={
                 !audioUnlocked
                   ? "Tap to enable sound"
                   : isMuted
-                  ? "Unmute"
-                  : "Mute"
+                    ? "Unmute"
+                    : "Mute"
               }
             >
               {!audioUnlocked ? (
-                <Volume2 className="w-5 h-5 text-white" />
+                <Volume2 className="w-5 h-5 text-[#1E2330]" />
               ) : isMuted ? (
-                <VolumeX className="w-5 h-5 text-white" />
+                <VolumeX className="w-5 h-5 text-[#F2F2EC]" />
               ) : (
-                <Volume2 className="w-5 h-5 text-white" />
+                <Volume2 className="w-5 h-5 text-[#F2F2EC]" />
               )}
             </div>
 
-            {/* Info Cards - Prize, Players, Called Numbers, Patterns */}
+            {/* Info Cards */}
             <div className="flex gap-1.5 flex-1 justify-center">
-              {/* Prize Card */}
-              <div className="bg-amber-500 rounded-xl px-2 py-1.5 shadow-lg border-2 border-white/30">
-                <div className="text-[8px] text-white/80 font-bold uppercase tracking-wide">
+              <div
+                className="rounded-xl px-2 py-1.5 shadow-lg border"
+                style={{
+                  backgroundColor: UI_COLORS.surface,
+                  borderColor: UI_COLORS.accent,
+                }}
+              >
+                <div
+                  className="text-[8px] font-bold uppercase tracking-wide"
+                  style={{ color: UI_COLORS.base }}
+                >
                   Prize
                 </div>
-                <div className="text-white font-black text-base leading-tight">
+                <div
+                  className="font-black text-sm leading-tight"
+                  style={{ color: UI_COLORS.base }}
+                >
                   {totalPrize.toFixed(0)}
                 </div>
               </div>
 
-              {/* Players Card */}
-              <div className="bg-blue-500 rounded-xl px-2 py-1.5 shadow-lg border-2 border-white/30">
-                <div className="text-[8px] text-white/80 font-bold uppercase tracking-wide">
+              <div
+                className="rounded-xl px-2 py-1.5 shadow-lg border"
+                style={{
+                  backgroundColor: UI_COLORS.surface,
+                  borderColor: UI_COLORS.accent,
+                }}
+              >
+                <div
+                  className="text-[8px] font-bold uppercase tracking-wide"
+                  style={{ color: UI_COLORS.base }}
+                >
                   Players
                 </div>
-                <div className="text-white font-black text-base leading-tight">
+                <div
+                  className="font-black text-sm leading-tight"
+                  style={{ color: UI_COLORS.base }}
+                >
                   {playerCount}
                 </div>
               </div>
 
-              {/* Called Numbers Card */}
-              <div className="bg-emerald-500 rounded-xl px-2 py-1.5 shadow-lg border-2 border-white/30">
-                <div className="text-[8px] text-white/80 font-bold uppercase tracking-wide">
+              <div
+                className="rounded-xl px-2 py-1.5 shadow-lg border"
+                style={{
+                  backgroundColor: UI_COLORS.surface,
+                  borderColor: UI_COLORS.accent,
+                }}
+              >
+                <div
+                  className="text-[8px] font-bold uppercase tracking-wide"
+                  style={{ color: UI_COLORS.base }}
+                >
                   Called
                 </div>
-                <div className="text-white font-black text-base leading-tight">
+                <div
+                  className="font-black text-sm leading-tight"
+                  style={{ color: UI_COLORS.base }}
+                >
                   {calledNumbersList.length}/75
                 </div>
-              </div>
-
-              {/* Winning Patterns Card */}
-              <div className="bg-purple-500 rounded-xl px-2 py-1.5 shadow-lg border-2 border-white/30">
-                <AnimatedPatternCard />
               </div>
             </div>
 
             {/* Reload Button */}
             <div
               onClick={() => window.location.reload()}
-              className="w-[36px] h-[36px] bg-black/20 rounded-full flex items-center justify-center text-white text-xl cursor-pointer hover:bg-black/30 transition shrink-0"
+              className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-xl cursor-pointer transition shrink-0"
+              style={{
+                backgroundColor: UI_COLORS.accent,
+                color: UI_COLORS.surface,
+              }}
             >
               ↻
             </div>
@@ -1088,15 +937,24 @@ export default function PlayingRoom() {
                 style={{
                   borderColor: displayCurrentBall.hex,
                   transform: isMainBallPopping ? "scale(0)" : "scale(1)",
+                  backgroundColor: UI_COLORS.surface,
+                  color: UI_COLORS.base,
                 }}
-                className={`w-[90px] h-[90px] bg-white rounded-full flex items-center justify-center 
-                            text-[#1F3B63] text-[45px] font-black shadow-lg border-[5px] 
+                className={`w-[90px] h-[90px] rounded-full flex items-center justify-center 
+                            text-[45px] font-black shadow-lg border-[5px] 
                             transition-transform duration-300 ease-[cubic-bezier(0.175,0.885,0.32,1.275)]`}
               >
                 {displayCurrentBall.num}
               </div>
             ) : (
-              <div className="w-[90px] h-[90px] bg-white/10 rounded-full flex items-center justify-center text-white/50 text-sm border-[5px] border-white/20">
+              <div
+                className="w-[90px] h-[90px] rounded-full flex items-center justify-center text-sm border-[5px]"
+                style={{
+                  backgroundColor: UI_COLORS.surface,
+                  borderColor: UI_COLORS.accent,
+                  color: UI_COLORS.base,
+                }}
+              >
                 Waiting...
               </div>
             )}
@@ -1105,7 +963,8 @@ export default function PlayingRoom() {
           {/* RAIL */}
           <div
             ref={railWrapperRef}
-            className="mt-auto mb-5 w-[70%] h-[60px] bg-black/15 rounded-full flex justify-center items-center px-2 relative box-border overflow-hidden"
+            className="mt-auto mb-5 w-[76%] h-[56px] rounded-full flex justify-center items-center px-2 relative box-border overflow-hidden"
+            style={{ backgroundColor: UI_COLORS.accent }}
           >
             <div
               ref={railRef}
@@ -1124,163 +983,258 @@ export default function PlayingRoom() {
                 </div>
               ))}
             </div>
-            <div
-              className="w-[50px] h-[50px] flex items-center bg-black/15 rounded-full mr-2 justify-center text-xl absolute right-0 cursor-pointer hover:bg-black/25 transition-colors"
-              onClick={() => setIsNumbersDialogOpen(true)}
-            >
-              <Maximize2 className="w-5 h-5 text-white" />
-            </div>
           </div>
         </div>
 
         {/* --- BOARD --- */}
-        <div className="flex-grow p-5 flex flex-col items-center justify-start gap-4">
+        <div className="flex-grow p-3 flex gap-2 min-h-0">
           <div
-            className={`w-full grid gap-2 overflow-y-auto px-1 ${
-              totalCartelas === 1
-                ? "grid-cols-1"
-                : totalCartelas === 2
-                ? "grid-cols-1 justify-items-center"
-                : "grid-cols-2"
-            }`}
-            style={{ maxHeight: "calc(100% - 80px)" }}
+            className="w-[142px] shrink-0 self-start h-fit rounded-xl border p-2 flex flex-col"
+            style={{
+              backgroundColor: UI_COLORS.surface,
+              borderColor: UI_COLORS.accent,
+            }}
           >
-            {selectedCartelas.map((cardId) => {
-              const cardData = bingoCards[cardId - 1];
-              const cardMarkedSet = new Set(
-                (markedNumbers[cardId] || []).map(String)
-              );
-
-              // Determine cell size/text size based on total cards
-              const isSmall = totalCartelas > 1;
-              const headerHeight = isSmall ? "h-[25px]" : "h-[40px]";
-              const headerText = isSmall ? "text-sm" : "text-xl";
-              const cellText = isSmall
-                ? "text-sm md:text-base"
-                : "text-xl md:text-2xl";
-              const rounded = isSmall ? "rounded-md" : "rounded-lg";
-
-              return (
-                <div
-                  key={cardId}
-                  className={`bg-white rounded-[15px] p-1.5 shadow-lg grid grid-cols-5 gap-1 ${
-                    totalCartelas === 2 ? "w-[55%]" : "w-full"
-                  } h-fit`}
-                >
-                  {["B", "I", "N", "G", "O"].map((char, i) => {
-                    const headerColors = [
-                      "#FF6B6B",
-                      "#FFD93D",
-                      "#6BCB77",
-                      "#4D96FF",
-                      "#FF85F3",
-                    ];
+            <h3
+              className="text-[10px] font-black tracking-wide uppercase text-center mb-2"
+              style={{ color: UI_COLORS.base }}
+            >
+              Called
+            </h3>
+            <div className="overflow-y-auto pr-0.5">
+              <div className="grid grid-cols-5 gap-1 mb-1.5">
+                {["B", "I", "N", "G", "O"].map((letter) => (
+                  <div
+                    key={letter}
+                    className="h-5 rounded flex items-center justify-center text-[10px] font-black"
+                    style={{
+                      backgroundColor: UI_COLORS.base,
+                      color: UI_COLORS.surface,
+                    }}
+                  >
+                    {letter}
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-5 gap-1 justify-items-center">
+                {Array.from({ length: 15 }).flatMap((_, rowIdx) =>
+                  [0, 1, 2, 3, 4].map((colIdx) => {
+                    const num = rowIdx + 1 + colIdx * 15;
+                    const isCalled = calledNumbersList.includes(num);
                     return (
                       <div
+                        key={num}
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black"
+                        style={{
+                          backgroundColor: isCalled
+                            ? UI_COLORS.accent
+                            : UI_COLORS.surface,
+                          color: isCalled ? UI_COLORS.surface : UI_COLORS.base,
+                          border: `1px solid ${UI_COLORS.accent}`,
+                        }}
+                      >
+                        {num}
+                      </div>
+                    );
+                  }),
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 flex flex-col items-end min-w-0">
+            <div
+              className={`w-full grid overflow-y-auto pr-1 ${
+                totalCartelas >= 3
+                  ? "grid-cols-2 gap-x-1.5 gap-y-2 justify-items-stretch"
+                  : "grid-cols-1 gap-2 justify-items-end"
+              }`}
+              style={{ maxHeight: "calc(100% - 62px)" }}
+            >
+              {selectedCartelas.map((cardId) => {
+                const cardData = bingoCards[cardId - 1];
+                const cardMarkedSet = new Set(
+                  (markedNumbers[cardId] || []).map(String),
+                );
+
+                const cardSize =
+                  totalCartelas <= 1
+                    ? {
+                        cardWidth: "w-[175px]",
+                        headerHeight: "h-6",
+                        headerText: "text-[11px]",
+                        cellText: "text-[12px]",
+                        rounded: "rounded-md",
+                        gap: "gap-[2px]",
+                        padding: "p-1.5",
+                        freeText: "text-lg",
+                      }
+                    : totalCartelas <= 2
+                      ? {
+                          cardWidth: "w-[150px]",
+                          headerHeight: "h-5",
+                          headerText: "text-[10px]",
+                          cellText: "text-[11px]",
+                          rounded: "rounded",
+                          gap: "gap-[2px]",
+                          padding: "p-1.5",
+                          freeText: "text-base",
+                        }
+                      : totalCartelas === 3
+                        ? {
+                            cardWidth: "w-[112px]",
+                            headerHeight: "h-4",
+                            headerText: "text-[9px]",
+                            cellText: "text-[9px]",
+                            rounded: "rounded",
+                            gap: "gap-[1px]",
+                            padding: "p-1",
+                            freeText: "text-sm",
+                          }
+                        : {
+                            cardWidth: "w-full",
+                            headerHeight: "h-3.5",
+                            headerText: "text-[8px]",
+                            cellText: "text-[8px]",
+                            rounded: "rounded",
+                            gap: "gap-[1px]",
+                            padding: "p-1",
+                            freeText: "text-[10px]",
+                          };
+
+                return (
+                  <div
+                    key={cardId}
+                    className={`${cardSize.cardWidth} rounded-xl grid grid-cols-5 ${cardSize.gap} ${cardSize.padding} h-fit border shadow-sm`}
+                    style={{
+                      backgroundColor: UI_COLORS.surface,
+                      borderColor: UI_COLORS.base,
+                    }}
+                  >
+                    {["B", "I", "N", "G", "O"].map((char, i) => (
+                      <div
                         key={i}
-                        style={{ backgroundColor: headerColors[i] }}
-                        className={`${headerHeight} flex items-center justify-center text-white font-black ${headerText} rounded-md shadow-sm text-shadow`}
+                        className={`${cardSize.headerHeight} flex items-center justify-center font-black ${cardSize.headerText} ${cardSize.rounded}`}
+                        style={{
+                          backgroundColor: UI_COLORS.base,
+                          color: UI_COLORS.surface,
+                        }}
                       >
                         {char}
                       </div>
-                    );
-                  })}
+                    ))}
 
-                  {cardData ? (
-                    Array.from({ length: 5 }).flatMap((_, rowIdx) =>
-                      ["B", "I", "N", "G", "O"].map((col) => {
-                        const val = cardData[col][rowIdx];
-                        const isMarked =
-                          val !== "FREE" && cardMarkedSet.has(String(val));
-                        const isCalled =
-                          val !== "FREE" && calledNumbersList.includes(val);
+                    {cardData ? (
+                      Array.from({ length: 5 }).flatMap((_, rowIdx) =>
+                        ["B", "I", "N", "G", "O"].map((col) => {
+                          const val = cardData[col][rowIdx];
+                          const isMarked =
+                            val !== "FREE" && cardMarkedSet.has(String(val));
+                          const isCalled =
+                            val !== "FREE" && calledNumbersList.includes(val);
 
-                        return (
-                          <div
-                            key={`${col}-${rowIdx}`}
-                            onClick={() => toggleCell(val, cardId)}
-                            className={`aspect-square border ${rounded} flex items-center justify-center ${cellText} font-black relative cursor-pointer select-none active:scale-95 transition-transform ${
-                              isCalled
-                                ? "bg-green-400 border-green-600 border-2"
-                                : "bg-[#FFFBF0] border-gray-200"
-                            }`}
-                          >
-                            {val === "FREE" ? (
-                              <span
-                                className={`text-[#FFD700] ${
-                                  isSmall ? "text-xl" : "text-3xl"
-                                } animate-pulse`}
-                              >
-                                ★
-                              </span>
-                            ) : (
-                              <>
-                                <span
-                                  className={
-                                    isMarked
-                                      ? ""
-                                      : isCalled
-                                      ? "text-green-900 font-black"
-                                      : "text-[#1F3B63]"
-                                  }
-                                >
-                                  {val}
+                          return (
+                            <div
+                              key={`${col}-${rowIdx}`}
+                              onClick={() => toggleCell(val, cardId)}
+                              className={`aspect-square border ${cardSize.rounded} flex items-center justify-center ${cardSize.cellText} font-black relative cursor-pointer select-none active:scale-95 transition-transform`}
+                              style={{
+                                backgroundColor: isCalled
+                                  ? UI_COLORS.accent
+                                  : UI_COLORS.surface,
+                                borderColor: UI_COLORS.base,
+                                color: isCalled
+                                  ? UI_COLORS.surface
+                                  : UI_COLORS.base,
+                              }}
+                            >
+                              {val === "FREE" ? (
+                                <span className={`${cardSize.freeText} animate-pulse`}>
+                                  ★
                                 </span>
-                                {isMarked && (
-                                  <div className="absolute w-[80%] h-[80%] bg-red-500/60 rounded-full border-2 border-red-600/80 animate-stamp"></div>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        );
-                      })
-                    )
-                  ) : (
-                    <div className="col-span-5 text-center py-10 text-gray-500">
-                      ?
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                              ) : (
+                                <>
+                                  <span>{val}</span>
+                                  {isMarked && (
+                                    <div
+                                      className="absolute w-[80%] h-[80%] rounded-full border-2 animate-stamp"
+                                      style={{
+                                        borderColor: UI_COLORS.base,
+                                        backgroundColor: `${UI_COLORS.base}55`,
+                                      }}
+                                    ></div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          );
+                        }),
+                      )
+                    ) : (
+                      <div className="col-span-5 text-center py-6">?</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
 
-          <button
-            onClick={handleBingoClick}
-            className="w-full max-w-[200px] py-3 mt-2 bg-gradient-to-r from-[#FFD700] to-[#FFA500] rounded-full text-white font-black text-2xl shadow-lg border-4 border-white/30 active:scale-95 transition-transform animate-pulse"
-          >
-            BINGO!
-          </button>
+            <button
+              onClick={handleBingoClick}
+              className="w-[175px] py-2.5 mt-2 rounded-full font-black text-lg shadow-lg border-2 active:scale-95 transition-transform"
+              style={{
+                backgroundColor: UI_COLORS.accent,
+                color: UI_COLORS.surface,
+                borderColor: UI_COLORS.base,
+              }}
+            >
+              BINGO!
+            </button>
+          </div>
         </div>
       </div>
 
       {/* --- MODALS --- */}
       {/* Winner Modal */}
       {systemWinnerData && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm overflow-y-auto py-4">
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-sm overflow-y-auto py-4"
+          style={{ backgroundColor: "rgba(30, 35, 48, 0.85)" }}
+        >
           <div
-            className={`w-full max-w-sm bg-white rounded-3xl p-4 text-center shadow-2xl animate-stamp border-4 my-auto ${
-              String(systemWinnerData.winner.userId) === String(userId)
-                ? "border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.5)]"
-                : "border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.5)]"
-            }`}
+            className="w-full max-w-sm rounded-3xl p-4 text-center shadow-2xl animate-stamp border-2 my-auto"
+            style={{
+              backgroundColor: UI_COLORS.surface,
+              borderColor: UI_COLORS.base,
+            }}
           >
             <div className="mb-4">
               {String(systemWinnerData.winner.userId) === String(userId) ? (
                 <>
-                  <h2 className="text-3xl font-black text-green-500 mb-2 drop-shadow-sm">
+                  <h2
+                    className="text-3xl font-black mb-2"
+                    style={{ color: UI_COLORS.base }}
+                  >
                     YOU WON!
                   </h2>
-                  <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">
+                  <p
+                    className="font-bold uppercase tracking-widest text-xs"
+                    style={{ color: UI_COLORS.accent }}
+                  >
                     Congratulations
                   </p>
                 </>
               ) : (
                 <>
-                  <h2 className="text-3xl font-black text-red-500 mb-2 drop-shadow-sm">
+                  <h2
+                    className="text-3xl font-black mb-2"
+                    style={{ color: UI_COLORS.base }}
+                  >
                     GAME OVER
                   </h2>
-                  <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">
+                  <p
+                    className="font-bold uppercase tracking-widest text-xs"
+                    style={{ color: UI_COLORS.accent }}
+                  >
                     Better luck next time
                   </p>
                 </>
@@ -1290,11 +1244,12 @@ export default function PlayingRoom() {
             {/* Status */}
             <div className="mb-4">
               <span
-                className={`inline-block px-4 py-2 rounded-full font-black text-sm ${
-                  String(systemWinnerData.winner.userId) === String(userId)
-                    ? "bg-green-100 text-green-700"
-                    : "bg-red-100 text-red-700"
-                }`}
+                className="inline-block px-4 py-2 rounded-full font-black text-sm border"
+                style={{
+                  backgroundColor: UI_COLORS.accent,
+                  color: UI_COLORS.surface,
+                  borderColor: UI_COLORS.base,
+                }}
               >
                 {String(systemWinnerData.winner.userId) === String(userId)
                   ? "WINNER"
@@ -1302,46 +1257,50 @@ export default function PlayingRoom() {
               </span>
             </div>
 
-            <div className="bg-gray-50 rounded-2xl p-3 mb-3 border border-gray-100">
+            <div
+              className="rounded-2xl p-3 mb-3 border"
+              style={{
+                backgroundColor: UI_COLORS.surface,
+                borderColor: UI_COLORS.accent,
+              }}
+            >
               <div className="grid grid-cols-2 gap-3">
                 {/* Winner Name (masked) */}
                 <div>
-                  <p className="text-xs text-gray-400 font-bold uppercase mb-1">
+                  <p
+                    className="text-xs font-bold uppercase mb-1"
+                    style={{ color: UI_COLORS.accent }}
+                  >
                     Winner
                   </p>
-                  <p className="text-lg font-black text-[#1F3B63]">
+                  <p className="text-lg font-black" style={{ color: UI_COLORS.base }}>
                     @{getMaskedWinnerName(systemWinnerData.winner.userName)}
                   </p>
                 </div>
 
                 {/* Win Amount */}
                 <div>
-                  <p className="text-xs text-gray-400 font-bold uppercase mb-1">
+                  <p
+                    className="text-xs font-bold uppercase mb-1"
+                    style={{ color: UI_COLORS.accent }}
+                  >
                     Win Amount
                   </p>
-                  <p className="text-xl font-black text-[#FFA500]">
-                    {calculatePrizeWithWinCut(systemWinnerData.prize)}{" "}
-                    Br
-                  </p>
-                </div>
-
-                {/* Tokens Win Amount */}
-                <div>
-                  <p className="text-xs text-gray-400 font-bold uppercase mb-1">
-                    Tokens Earned
-                  </p>
-                  <p className="text-lg font-black text-emerald-500">
-                    +{earnedSystemPoints} tokens
+                  <p className="text-xl font-black" style={{ color: UI_COLORS.base }}>
+                    {calculatePrizeWithWinCut(systemWinnerData.prize)} Br
                   </p>
                 </div>
 
                 {/* Winner Card Number */}
                 {systemWinnerData.winner.cartelaId && (
                   <div>
-                    <p className="text-xs text-gray-400 font-bold uppercase mb-1">
+                    <p
+                      className="text-xs font-bold uppercase mb-1"
+                      style={{ color: UI_COLORS.accent }}
+                    >
                       Card Number
                     </p>
-                    <p className="text-lg font-black text-[#1F3B63]">
+                    <p className="text-lg font-black" style={{ color: UI_COLORS.base }}>
                       #{systemWinnerData.winner.cartelaId}
                     </p>
                   </div>
@@ -1352,65 +1311,31 @@ export default function PlayingRoom() {
             {/* Winner Card Display */}
             {systemWinnerData.winner.cartelaId && (
               <div className="mb-4">
-                <p className="text-xs text-gray-400 font-bold uppercase mb-1.5">
+                <p
+                  className="text-xs font-bold uppercase mb-1.5"
+                  style={{ color: UI_COLORS.accent }}
+                >
                   Winning Card
                 </p>
                 {renderWinnerCard(
                   systemWinnerData.winner.cartelaId,
                   systemWinnerData.winner.winningCells || [],
-                  calledNumbersList
+                  calledNumbersList,
                 )}
               </div>
             )}
 
             <button
               onClick={handleLeaveGame}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 py-3 rounded-xl font-bold shadow-sm active:scale-95 transition-all"
+              className="w-full py-3 rounded-xl font-bold shadow-sm active:scale-95 transition-all border"
+              style={{
+                backgroundColor: UI_COLORS.base,
+                color: UI_COLORS.surface,
+                borderColor: UI_COLORS.accent,
+              }}
             >
               Play Again
             </button>
-          </div>
-        </div>
-      )}
-
-      {isNumbersDialogOpen && (
-        <div
-          className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
-          onClick={() => setIsNumbersDialogOpen(false)}
-        >
-          <div
-            className="bg-white rounded-[30px] pt-6 pb-8 px-4 w-full max-w-[360px] relative shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setIsNumbersDialogOpen(false)}
-              className="absolute -top-3 -right-3 w-10 h-10 bg-[#FFC107] rounded-full text-white font-black text-xl flex items-center justify-center shadow-md border-4 border-white active:scale-95 transition-transform"
-            >
-              ✕
-            </button>
-            <h3 className="text-xl font-black text-[#1F3B63] text-center mb-6">
-              Numbers already drawn
-            </h3>
-            <div className="grid grid-cols-5 gap-y-1 justify-items-center">
-              {Array.from({ length: 15 }).map((_, rowIdx) =>
-                [0, 1, 2, 3, 4].map((colIdx) => {
-                  const num = rowIdx + 1 + colIdx * 15;
-                  const isCalled = calledNumbersList.includes(num);
-                  return (
-                    <div
-                      key={num}
-                      className={`w-8 h-8 flex items-center justify-center text-lg font-bold rounded-full ${
-                        isCalled
-                          ? "bg-[#FF4444] text-white shadow-sm"
-                          : "text-gray-300 bg-transparent"
-                      }`}
-                    >
-                      {num}
-                    </div>
-                  );
-                })
-              )}
-            </div>
           </div>
         </div>
       )}
