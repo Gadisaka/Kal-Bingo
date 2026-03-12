@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { socketClient } from "../sockets/socket";
 // import ConnectionStatus from "../components/ConnectionStatus";
@@ -47,11 +47,8 @@ export default function WaitingRoom() {
   const [takenCartelas, setTakenCartelas] = useState({});
   const takenCartelasRef = useRef({});
   const [selectionError, setSelectionError] = useState(null);
-  const [showWaitModal, setShowWaitModal] = useState(false);
   const [isSelectionLocked, setIsSelectionLocked] = useState(false);
   const [showCountdownWarning, setShowCountdownWarning] = useState(false);
-  const [leaveTimer, setLeaveTimer] = useState(10);
-  const leaveTimerRef = useRef(null);
   const [showBackNavigationModal, setShowBackNavigationModal] = useState(false);
   const backNavigationRef = useRef(false);
   const [winCutPercent, setWinCutPercent] = useState(10);
@@ -183,16 +180,6 @@ export default function WaitingRoom() {
         );
         setRoom(updatedRoom);
         setHasReceivedUpdate(true);
-
-        // Close modal if second player joins (player count > 1)
-        if (updatedRoom.joinedPlayers?.length > 1) {
-          setShowWaitModal((prev) => {
-            if (prev) {
-              console.log("✅ Second player joined, closing wait modal");
-            }
-            return false;
-          });
-        }
       }
     };
     const handleCountdown = ({ roomId, expiresAt }) => {
@@ -257,25 +244,12 @@ export default function WaitingRoom() {
       }
     };
 
-    const handleTimerEndedSinglePlayer = ({ roomId }) => {
-      if (roomId === gameRoomId) {
-        console.log("⏸️ Timer ended with only one player, showing wait modal");
-        setShowWaitModal(true);
-      }
-    };
-    const handleTimerExtended = ({ roomId }) => {
-      if (roomId === gameRoomId) {
-        console.log("✅ Timer extended successfully");
-        setShowWaitModal(false);
-      }
-    };
     const handleGameStart = ({ roomId }) => {
       console.log(
         `🎮 Received game:start event for room ${roomId}, current room: ${gameRoomId}`,
       );
       if (roomId === gameRoomId) {
         console.log(`✅ Match! Navigating to /playing/${roomId}`);
-        setShowWaitModal(false); // Close modal if game starts
         // Pass game data to playing room using refs for latest values
         const currentTakenCartelas = takenCartelasRef.current || {};
         const currentRoom = roomRef.current;
@@ -304,7 +278,6 @@ export default function WaitingRoom() {
     const handleRoomTimeout = ({ roomId, userId, message, refundAmount }) => {
       if (roomId === gameRoomId && userId === user?.id) {
         console.log(`⏰ Room ${roomId} timed out. Refund: ${refundAmount}`);
-        setShowWaitModal(false);
         const refundDisplay = Math.trunc(Number(refundAmount || 0));
         const alertMessage =
           refundAmount > 0
@@ -323,8 +296,6 @@ export default function WaitingRoom() {
     socket.on("room:countdownWarning", handleCountdownWarning);
     socket.on("cartelas-auto-assigned", handleCartelasAutoAssigned);
     socket.on("cartela-selection-locked", handleCartelaSelectionLocked);
-    socket.on("room:timerEndedSinglePlayer", handleTimerEndedSinglePlayer);
-    socket.on("room:timerExtended", handleTimerExtended);
     socket.on("system:roomTimeout", handleRoomTimeout);
 
     socket.emit("system:getRooms");
@@ -338,8 +309,6 @@ export default function WaitingRoom() {
       socket.off("room:countdownWarning", handleCountdownWarning);
       socket.off("cartelas-auto-assigned", handleCartelasAutoAssigned);
       socket.off("cartela-selection-locked", handleCartelaSelectionLocked);
-      socket.off("room:timerEndedSinglePlayer", handleTimerEndedSinglePlayer);
-      socket.off("room:timerExtended", handleTimerExtended);
       socket.off("system:roomTimeout", handleRoomTimeout);
     };
   }, [socket, gameRoomId, navigate, user, selectedCartelas.length]);
@@ -375,13 +344,6 @@ export default function WaitingRoom() {
         );
         setSecondsLeft(seconds);
 
-        // Check if timer reached 0 and only one player (backup check)
-        if (seconds === 0 && currentRoom.joinedPlayers?.length === 1) {
-          console.log(
-            "⏸️ Timer reached 0 locally with one player, showing modal",
-          );
-          setShowWaitModal(true);
-        }
       }, 1000);
       return () => clearInterval(intervalRef.current);
     } else {
@@ -513,36 +475,6 @@ export default function WaitingRoom() {
     navigate("/");
   };
 
-  const handleLeaveGame = useCallback(() => {
-    // Clear the leave timer
-    if (leaveTimerRef.current) {
-      clearInterval(leaveTimerRef.current);
-      leaveTimerRef.current = null;
-    }
-    setLeaveTimer(10);
-    setShowWaitModal(false);
-    // Leave room logic
-    if (user) {
-      socket.emit("system:leaveRoom", { userId: user.id });
-      navigate("/");
-    }
-  }, [user, socket, navigate]);
-
-  const handleWaitMore = () => {
-    if (!socket || !user || !gameRoomId) return;
-    console.log("⏰ Player chose to wait more, extending timer");
-    // Clear the leave timer
-    if (leaveTimerRef.current) {
-      clearInterval(leaveTimerRef.current);
-      leaveTimerRef.current = null;
-    }
-    setLeaveTimer(10);
-    socket.emit("room:extendTimer", {
-      roomId: gameRoomId,
-      userId: user.id,
-    });
-  };
-
   const handleBackNavigationWait = () => {
     // Close the modal - navigation was already prevented
     setShowBackNavigationModal(false);
@@ -556,44 +488,6 @@ export default function WaitingRoom() {
     // Leave the room and navigate back
     leaveRoom();
   };
-
-  // Timer for auto-leave when modal is shown
-  useEffect(() => {
-    if (showWaitModal) {
-      // Reset timer when modal opens
-      setLeaveTimer(10);
-
-      // Start countdown
-      leaveTimerRef.current = setInterval(() => {
-        setLeaveTimer((prev) => {
-          if (prev <= 1) {
-            // Timer reached 0, auto-leave
-            if (leaveTimerRef.current) {
-              clearInterval(leaveTimerRef.current);
-              leaveTimerRef.current = null;
-            }
-            handleLeaveGame();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      return () => {
-        if (leaveTimerRef.current) {
-          clearInterval(leaveTimerRef.current);
-          leaveTimerRef.current = null;
-        }
-      };
-    } else {
-      // Reset timer when modal closes
-      setLeaveTimer(10);
-      if (leaveTimerRef.current) {
-        clearInterval(leaveTimerRef.current);
-        leaveTimerRef.current = null;
-      }
-    }
-  }, [showWaitModal, handleLeaveGame]);
 
   const stake = room?.betAmount ?? 0;
   const selectedCount = Object.keys(takenCartelas || {}).length;
@@ -1125,52 +1019,6 @@ export default function WaitingRoom() {
         </div>
 
       </div>
-
-      {showWaitModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">
-          <div
-            className="w-full max-w-md rounded-3xl border p-6"
-            style={{
-              borderColor: UI_COLORS.accent,
-              backgroundColor: UI_COLORS.surface,
-            }}
-          >
-            <h2
-              className="text-2xl font-bold"
-              style={{ color: UI_COLORS.base }}
-            >
-              Time up
-            </h2>
-            <p className="mt-3" style={{ color: UI_COLORS.base }}>
-              Only one player. Wait more or leave?
-            </p>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <button
-                onClick={handleWaitMore}
-                className="flex-1 rounded-2xl px-5 py-3 font-semibold transition hover:scale-[1.02] border"
-                style={{
-                  backgroundColor: UI_COLORS.accent,
-                  color: UI_COLORS.surface,
-                  borderColor: UI_COLORS.base,
-                }}
-              >
-                Wait
-              </button>
-              <button
-                onClick={handleLeaveGame}
-                className="flex-1 rounded-2xl border px-5 py-3 font-semibold transition hover:scale-[1.02]"
-                style={{
-                  borderColor: UI_COLORS.accent,
-                  backgroundColor: UI_COLORS.base,
-                  color: UI_COLORS.surface,
-                }}
-              >
-                Leave {leaveTimer > 0 && `(${leaveTimer}s)`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showBackNavigationModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6">

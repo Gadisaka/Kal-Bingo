@@ -54,6 +54,7 @@ export default function PlayingRoom() {
   const location = useLocation();
   const { user } = useAuth();
   const navigationState = location.state || {};
+  const isSpectator = navigationState.isSpectator === true;
   const userId = user?.id || user?._id || null;
 
   // --- AUDIO SETUP ---
@@ -391,6 +392,12 @@ export default function PlayingRoom() {
 
   // --- ROOM VALIDATION ---
   useEffect(() => {
+    if (isSpectator) {
+      if (room && hasReceivedUpdate && room.status !== "playing" && !systemWinnerData) {
+        navigate("/");
+      }
+      return;
+    }
     if (!room || !user || !hasReceivedUpdate) {
       return;
     }
@@ -404,7 +411,7 @@ export default function PlayingRoom() {
     if (!isMember || (!isPlaying && !isFinished && !showingWinnerModal)) {
       navigate("/");
     }
-  }, [room, user, hasReceivedUpdate, navigate, systemWinnerData]);
+  }, [room, user, hasReceivedUpdate, navigate, systemWinnerData, isSpectator]);
 
   // --- SOCKET LISTENERS ---
   useEffect(() => {
@@ -459,11 +466,16 @@ export default function PlayingRoom() {
       "bingo-not-now": () => showNotification("Will win next number", "info"),
       "bingo-check-error": () => showNotification("Error occurred", "error"),
       "bingo-already-won": () => showNotification("Already won", "warning"),
+      "system:gameFinished": (d) => {
+        if (d.roomId === gameRoomId && isSpectator) {
+          navigate("/");
+        }
+      },
     };
     Object.entries(handlers).forEach(([e, h]) => activeSocket.on(e, h));
     return () =>
       Object.entries(handlers).forEach(([e, h]) => activeSocket.off(e, h));
-  }, [activeSocket, gameRoomId, showNotification]);
+  }, [activeSocket, gameRoomId, showNotification, isSpectator, navigate]);
 
   // --- NAVIGATION ---
   const totalCartelas = selectedCartelas.length;
@@ -1043,6 +1055,38 @@ export default function PlayingRoom() {
           </div>
 
           <div className="flex-1 flex flex-col items-end min-w-0">
+            {isSpectator ? (
+              <div className="w-full flex flex-col items-center justify-center h-full">
+                <div
+                  className="w-[175px] rounded-xl p-4 border-2 shadow-lg flex flex-col items-center justify-center text-center"
+                  style={{
+                    backgroundColor: UI_COLORS.surface,
+                    borderColor: UI_COLORS.accent,
+                    minHeight: "220px",
+                  }}
+                >
+                  <div
+                    className="text-4xl mb-3 animate-pulse"
+                    style={{ color: UI_COLORS.accent }}
+                  >
+                    &#9203;
+                  </div>
+                  <p
+                    className="font-black text-lg mb-1"
+                    style={{ color: UI_COLORS.base }}
+                  >
+                    Please Wait
+                  </p>
+                  <p
+                    className="text-xs font-bold"
+                    style={{ color: UI_COLORS.accent }}
+                  >
+                    You will join the next game
+                  </p>
+                </div>
+              </div>
+            ) : (
+            <>
             <div
               className={`w-full grid overflow-y-auto pr-1 ${
                 totalCartelas >= 3
@@ -1189,6 +1233,8 @@ export default function PlayingRoom() {
             >
               BINGO!
             </button>
+            </>
+            )}
           </div>
         </div>
       </div>

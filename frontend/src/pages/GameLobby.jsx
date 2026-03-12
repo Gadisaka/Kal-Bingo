@@ -201,6 +201,24 @@ export default function GameLobby() {
       navigate(`/waiting/${room.id}`);
     };
 
+    const handleSpectatorJoin = ({ room, calledNumbers }) => {
+      console.log("👁️ Joined as spectator! Room:", room.id);
+      if (joinTimeoutRef.current) {
+        clearTimeout(joinTimeoutRef.current);
+        joinTimeoutRef.current = null;
+      }
+      setJoinLoading(null);
+      navigate(`/playing/${room.id}`, {
+        state: {
+          isSpectator: true,
+          roomType: "system",
+          stake: room.betAmount,
+          playerCount: room.joinedPlayers?.length ?? 0,
+          calledNumbers,
+        },
+      });
+    };
+
     const handleSocketError = (err) => {
       console.log("⚠️ Socket error:", err);
       if (joinTimeoutRef.current) {
@@ -221,6 +239,7 @@ export default function GameLobby() {
     socket.on("room:countdownUpdate", handleCountdownUpdate);
     socket.on("system:joinDenied", handleJoinDenied);
     socket.on("system:joinSuccess", handleJoinSuccess);
+    socket.on("system:joinAsSpectator", handleSpectatorJoin);
     socket.on("error", handleSocketError);
 
     return () => {
@@ -234,6 +253,7 @@ export default function GameLobby() {
       socket.off("room:countdownUpdate", handleCountdownUpdate);
       socket.off("system:joinDenied", handleJoinDenied);
       socket.off("system:joinSuccess", handleJoinSuccess);
+      socket.off("system:joinAsSpectator", handleSpectatorJoin);
       socket.off("error", handleSocketError);
       if (joinTimeoutRef.current) {
         clearTimeout(joinTimeoutRef.current);
