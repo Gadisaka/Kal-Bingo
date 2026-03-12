@@ -52,7 +52,6 @@ export default function DailyStreakModal({
         <div className="grid grid-cols-4 gap-3 mb-8">
           {days.map((day) => {
             const isCompleted = day <= currentStreak;
-            const isToday = day === currentStreak; // Assuming currentStreak includes today if checked in
             const isTarget = day === targetDays;
 
             return (
