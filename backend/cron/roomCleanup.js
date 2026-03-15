@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import GameRoom from "../model/gameRooms.js";
 import GameHistory from "../model/gameHistory.js";
+import { updateRoomStatusById } from "../utils/roomManager.js";
 
 /**
  * Cron job that checks for rooms in "playing" status for more than 10 minutes
@@ -40,6 +41,15 @@ export function initRoomCleanupCron() {
           `🧹 [RoomCleanup] Updated ${result.modifiedCount} room(s) to "cancelled" status:`,
           staleRooms.map((r) => r._id.toString()).join(", ")
         );
+
+        // Keep in-memory room state in sync with DB so stale rooms are no longer treated as playing
+        for (const room of staleRooms) {
+          try {
+            await updateRoomStatusById(String(room._id), "cancelled");
+          } catch {
+            // Best-effort sync; room might not exist in memory
+          }
+        }
 
         // Update GameHistory entries for all stale rooms (both system and user-hosted)
         for (const room of staleRooms) {

@@ -18,9 +18,9 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        <WalletModal />
-        <ProfileModal />
-        <InviteModal />
+        {/* <WalletModal /> */}
+        {/* <ProfileModal /> */}
+        {/* <InviteModal /> */}
         <Routes>
           <Route path="/example" element={<BingoGame />} />
           <Route path="/test-audio" element={<TestAudioComponent />} />

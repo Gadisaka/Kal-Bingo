@@ -1,12 +1,8 @@
 import BotGameConfig from "../model/botGameConfig.js";
 import User from "../model/user.js";
-import GameRoom from "../model/gameRooms.js";
-import Wallet from "../model/wallet.js";
 import {
   getSystemRooms,
   getRoomById,
-  joinSystemRoom,
-  selectCartela,
 } from "../utils/roomManager.js";
 import {
   generateBallSequence,
@@ -76,33 +72,6 @@ function generateJoinSchedule(botCount, minDelay, maxDelay) {
 
   // Sort by delay time
   return schedule.sort((a, b) => a - b);
-}
-
-/**
- * Check if a bot has sufficient wallet balance for a stake
- */
-async function ensureBotWalletBalance(botId, stake) {
-  try {
-    let wallet = await Wallet.findOne({ user: botId });
-
-    if (!wallet) {
-      // Create wallet with sufficient balance
-      wallet = await Wallet.create({
-        user: botId,
-        balance: 100000, // Give bots plenty of balance
-        bonus: 0,
-      });
-    } else if (wallet.balance < stake) {
-      // Top up bot wallet
-      wallet.balance += 100000;
-      await wallet.save();
-    }
-
-    return true;
-  } catch (error) {
-    console.error(`[BotInjector] Error ensuring bot wallet:`, error);
-    return false;
-  }
 }
 
 /**
@@ -192,58 +161,51 @@ function getOptimalCard(roomId, isBot) {
 }
 
 /**
- * Select the optimal rigged card for a bot
+ * Select the optimal rigged card for a bot.
+ * Uses lightweight in-memory assignment -- no wallet deduction or MongoDB transaction.
  */
-async function selectRiggedCardForBot(io, roomId, bot) {
+function selectRiggedCardForBot(io, roomId, bot) {
   try {
     const room = getRoomById(roomId);
     if (!room || room.status !== "waiting") return false;
 
-    // Check if bot already has a card
-    const existingCard = Object.values(room.selectedCartelas || {}).find(
-      (c) => String(c.userId) === String(bot._id)
-    );
-    if (existingCard) return true; // Already has card
+    const botId = String(bot._id);
 
-    // Get optimal card for this bot
+    if (!room.selectedCartelas) room.selectedCartelas = {};
+
+    const existingCard = Object.values(room.selectedCartelas).find(
+      (c) => String(c.userId) === botId
+    );
+    if (existingCard) return true;
+
     const optimalCard = getOptimalCard(roomId, true);
     if (!optimalCard) {
       console.log(`[BotInjector] No optimal card available for bot ${bot.name}`);
       return false;
     }
 
-    // Select the cartela
-    const result = await selectCartela(
-      roomId,
-      String(bot._id),
-      optimalCard.cartelaId
+    if (room.selectedCartelas[optimalCard.cartelaId]) return false;
+
+    room.selectedCartelas[optimalCard.cartelaId] = {
+      userId: botId,
+      userName: bot.name,
+      stake: room.betAmount,
+      deductedFromBalance: room.betAmount,
+      deductedFromBonus: 0,
+    };
+
+    console.log(
+      `🎴 [BotInjector] Bot "${bot.name}" selected rigged cartela #${optimalCard.cartelaId} (${optimalCard.tier}, wins at ball #${optimalCard.winIndex})`
     );
 
-    if (result.success) {
-      console.log(
-        `🎴 [BotInjector] Bot "${bot.name}" selected rigged cartela #${optimalCard.cartelaId} (${optimalCard.tier}, wins at ball #${optimalCard.winIndex})`
-      );
+    io.to(roomId).emit("cartela-selected", {
+      userId: botId,
+      cartelaId: optimalCard.cartelaId,
+      allCartelas: room.selectedCartelas,
+    });
+    io.emit("system:roomUpdate", room);
 
-      // Broadcast cartela selection
-      io.to(roomId).emit("cartela-selected", {
-        userId: String(bot._id),
-        cartelaId: optimalCard.cartelaId,
-        allCartelas: result.allCartelas,
-      });
-
-      // Also broadcast room update for prize pool
-      const updatedRoom = getRoomById(roomId);
-      if (updatedRoom) {
-        io.emit("system:roomUpdate", updatedRoom);
-      }
-
-      return true;
-    } else {
-      console.log(
-        `[BotInjector] Bot ${bot.name} failed to select cartela: ${result.error}`
-      );
-      return false;
-    }
+    return true;
   } catch (error) {
     console.error(`[BotInjector] Error selecting rigged card for bot:`, error);
     return false;
@@ -251,66 +213,42 @@ async function selectRiggedCardForBot(io, roomId, bot) {
 }
 
 /**
- * Inject a single bot into a room
+ * Inject a single bot into a room using lightweight in-memory join.
+ * Skips wallet checks and heavy DB operations for bots.
  */
 async function injectBot(io, roomId, bot, stake) {
   try {
     const room = getRoomById(roomId);
     if (!room) {
-      console.log(
-        `[BotInjector] Room ${roomId} no longer exists, skipping bot injection`
-      );
       botsInGames.delete(String(bot._id));
       return false;
     }
 
-    // Don't inject if room is no longer waiting
     if (room.status !== "waiting") {
-      console.log(
-        `[BotInjector] Room ${roomId} is ${room.status}, skipping bot injection`
-      );
       botsInGames.delete(String(bot._id));
       return false;
     }
 
-    // Don't inject if room is full
     if (room.joinedPlayers.length >= room.maxPlayers) {
-      console.log(`[BotInjector] Room ${roomId} is full, skipping bot injection`);
       botsInGames.delete(String(bot._id));
       return false;
     }
 
-    // Ensure bot has wallet balance
-    await ensureBotWalletBalance(bot._id, stake);
+    const botId = String(bot._id);
 
-    // Join the room
-    const { room: updatedRoom, joined, reason } = await joinSystemRoom(
-      {
-        userId: String(bot._id),
-        username: bot.name,
-        socketId: `bot-${bot._id}`, // Fake socket ID for bots
-      },
-      stake
-    );
-
-    if (!joined) {
-      console.log(
-        `[BotInjector] Bot ${bot.name} failed to join room ${roomId}: ${reason}`
-      );
-      botsInGames.delete(String(bot._id));
+    if (room.joinedPlayers.some((p) => p.userId === botId)) {
+      botsInGames.delete(botId);
       return false;
     }
+
+    room.joinedPlayers.push({
+      userId: botId,
+      username: bot.name,
+      socketId: `bot-${bot._id}`,
+    });
 
     console.log(`🤖 [BotInjector] Bot "${bot.name}" joined room ${roomId}`);
-
-    // Emit room update to all clients
-    io.emit("system:roomUpdate", updatedRoom);
-
-    // Select rigged card 2-3 seconds after joining (looks natural)
-    const cardSelectDelay = 2000 + Math.random() * 1000; // 2-3 seconds
-    setTimeout(async () => {
-      await selectRiggedCardForBot(io, roomId, bot);
-    }, cardSelectDelay);
+    io.emit("system:roomUpdate", room);
 
     return true;
   } catch (error) {
@@ -377,11 +315,14 @@ async function startBotInjection(io, room, config) {
     // Store timeout references for cleanup
     const timeouts = [];
 
-    // Schedule bot joins
+    // Schedule bot joins with card selection immediately after each join
     bots.forEach((bot, index) => {
       const delay = schedule[index];
       const timeout = setTimeout(async () => {
-        await injectBot(io, roomId, bot, room.betAmount);
+        const joined = await injectBot(io, roomId, bot, room.betAmount);
+        if (joined) {
+          selectRiggedCardForBot(io, roomId, bot);
+        }
       }, delay);
       timeouts.push(timeout);
     });
@@ -477,15 +418,6 @@ async function checkAndInjectBots(io) {
       // Skip if already injecting
       if (activeInjections.has(room.id)) continue;
 
-      // Only inject if there's at least one human player
-      // This ensures bots don't play alone
-      const hasHumanPlayer = room.joinedPlayers.some((p) => {
-        // Bot socket IDs start with "bot-"
-        return !p.socketId?.startsWith("bot-");
-      });
-
-      if (!hasHumanPlayer) continue;
-
       // Start bot injection
       await startBotInjection(io, room, config);
     }
@@ -543,6 +475,21 @@ async function cleanupFinishedGameBots() {
   } catch (error) {
     console.error("[BotInjector] Error cleaning up finished game bots:", error);
   }
+}
+
+/**
+ * Immediately release all bots from a finished room.
+ * Call this when a game ends to make bots available for the next room.
+ */
+export function releaseBotsFromRoom(roomId) {
+  const injection = activeInjections.get(roomId);
+  if (injection) {
+    injection.bots.forEach((bot) => botsInGames.delete(String(bot._id)));
+    injection.timeouts.forEach((t) => clearTimeout(t));
+    activeInjections.delete(roomId);
+  }
+  cleanupRoomPreparation(roomId);
+  console.log(`[BotInjector] Released bots from room ${roomId}`);
 }
 
 /**

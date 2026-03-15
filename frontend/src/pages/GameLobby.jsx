@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { socketClient } from "../sockets/socket";
-import WalletBadge from "../components/WalletBadge";
-import BottomNavbar from "../components/BottomNavbar";
 import { useAuth } from "../context/AuthContext";
 import {
-  Star as StarIcon,
   Users,
   Timer as TimerIcon,
   Gamepad2,
   Loader2,
   RefreshCw,
+  Eye,
 } from "lucide-react";
 import { API_URL } from "../constant";
 
@@ -21,14 +19,18 @@ const DEFAULT_SETTINGS = {
   maxStake: 1000,
   callInterval: 5,
   winCut: 10,
-  gameStakes: [10, 20, 50, 100],
+  gameStakes: [10],
   waitingRoomDuration: 60,
 };
 
 const UI_COLORS = {
-  base: "#1E2330",
-  surface: "#F2F2EC",
-  accent: "#3A7A45",
+  pageBg: "#b998cf",
+  panelBg: "#c8aad8",
+  cardBg: "#cfb5df",
+  tileBg: "#ffffff",
+  tileBorder: "#e5e0ee",
+  primary: "#ff7900",
+  textDark: "#342146",
 };
 
 export default function GameLobby() {
@@ -46,17 +48,6 @@ export default function GameLobby() {
   // Extract betAmounts and maxPlayers from settings
   const betAmounts = gameSettings.gameStakes;
   const maxPlayers = gameSettings.maxPlayers;
-  const backgroundStars = useMemo(() => {
-    return Array.from({ length: 60 }, (_, i) => ({
-      id: i,
-      left: Math.random() * 100,
-      top: Math.random() * 100,
-      size: Math.random() * 4 + 2,
-      opacity: Math.random() * 0.4 + 0.2,
-      duration: 3 + Math.random() * 4,
-      delay: Math.random() * 2,
-    }));
-  }, []);
 
   // Real-time countdown — runs continuously at 500ms so timers never appear stuck
   const roomsRef = useRef(rooms);
@@ -77,7 +68,10 @@ export default function GameLobby() {
         let changed = false;
         for (const r of currentRooms) {
           if (r.expiresAt) {
-            const val = Math.max(0, Math.ceil((r.expiresAt - Date.now()) / 1000));
+            const val = Math.max(
+              0,
+              Math.ceil((r.expiresAt - Date.now()) / 1000),
+            );
             next[r.id] = val;
             if (prev[r.id] !== val) changed = true;
           }
@@ -115,7 +109,7 @@ export default function GameLobby() {
   useEffect(() => {
     const handleRoomsList = (roomsList) => {
       const activeRooms = roomsList.filter(
-        (r) => r.status === "waiting" || r.status === "playing"
+        (r) => r.status === "waiting" || r.status === "playing",
       );
       setRooms(activeRooms);
     };
@@ -131,7 +125,10 @@ export default function GameLobby() {
     const handleRoomUpdate = (updatedRoom) => {
       if (!betAmounts.includes(updatedRoom.betAmount)) return;
       setRooms((prev) => {
-        if (updatedRoom.status === "finished" || updatedRoom.status === "cancelled") {
+        if (
+          updatedRoom.status === "finished" ||
+          updatedRoom.status === "cancelled"
+        ) {
           return prev.filter((r) => r.id !== updatedRoom.id);
         }
         const existingIndex = prev.findIndex((r) => r.id === updatedRoom.id);
@@ -140,7 +137,10 @@ export default function GameLobby() {
           updated[existingIndex] = updatedRoom;
           return updated;
         }
-        if (updatedRoom.status === "waiting" || updatedRoom.status === "playing") {
+        if (
+          updatedRoom.status === "waiting" ||
+          updatedRoom.status === "playing"
+        ) {
           return [...prev, updatedRoom];
         }
         return prev;
@@ -153,15 +153,17 @@ export default function GameLobby() {
 
     const handleCountdown = ({ roomId, expiresAt }) => {
       setRooms((prev) =>
-        prev.map((r) => (r.id === roomId ? { ...r, expiresAt } : r))
+        prev.map((r) => (r.id === roomId ? { ...r, expiresAt } : r)),
       );
     };
 
     const handleCountdownUpdate = ({ roomId, seconds }) => {
       setRooms((prev) =>
         prev.map((r) =>
-          r.id === roomId ? { ...r, expiresAt: Date.now() + seconds * 1000 } : r
-        )
+          r.id === roomId
+            ? { ...r, expiresAt: Date.now() + seconds * 1000 }
+            : r,
+        ),
       );
     };
 
@@ -171,7 +173,7 @@ export default function GameLobby() {
 
     const handleGameStart = ({ roomId }) => {
       setRooms((prev) =>
-        prev.map((r) => (r.id === roomId ? { ...r, status: "playing" } : r))
+        prev.map((r) => (r.id === roomId ? { ...r, status: "playing" } : r)),
       );
     };
 
@@ -186,8 +188,8 @@ export default function GameLobby() {
         reason === "already_joined"
           ? "You are already in this room."
           : reason === "room_full"
-          ? "The room is full."
-          : `Could not join: ${reason || "Unknown error"}`
+            ? "The room is full."
+            : `Could not join: ${reason || "Unknown error"}`,
       );
     };
 
@@ -208,13 +210,18 @@ export default function GameLobby() {
         joinTimeoutRef.current = null;
       }
       setJoinLoading(null);
+      const cartelasCount = Object.keys(room.selectedCartelas || {}).length;
+      const stake = room.betAmount || 0;
       navigate(`/playing/${room.id}`, {
         state: {
           isSpectator: true,
           roomType: "system",
-          stake: room.betAmount,
+          stake,
           playerCount: room.joinedPlayers?.length ?? 0,
           calledNumbers,
+          cartelasCount,
+          prize: stake * cartelasCount,
+          selectedCartelas: room.selectedCartelas || {},
         },
       });
     };
@@ -229,6 +236,44 @@ export default function GameLobby() {
       alert(err?.message || "Failed to join. Please try again.");
     };
 
+    const handleSpectateSuccess = ({ room, calledNumbers }) => {
+      console.log("👁️ Spectate success! Room:", room.id);
+      if (joinTimeoutRef.current) {
+        clearTimeout(joinTimeoutRef.current);
+        joinTimeoutRef.current = null;
+      }
+      setJoinLoading(null);
+      const cartelasCount = Object.keys(room.selectedCartelas || {}).length;
+      const stake = room.betAmount || 0;
+      navigate(`/playing/${room.id}`, {
+        state: {
+          isSpectator: true,
+          roomType: "system",
+          stake,
+          playerCount: room.joinedPlayers?.length ?? 0,
+          calledNumbers,
+          cartelasCount,
+          prize: stake * cartelasCount,
+          selectedCartelas: room.selectedCartelas || {},
+        },
+      });
+    };
+
+    const handleSpectateDenied = ({ reason }) => {
+      console.log("❌ Spectate denied:", reason);
+      if (joinTimeoutRef.current) {
+        clearTimeout(joinTimeoutRef.current);
+        joinTimeoutRef.current = null;
+      }
+      setJoinLoading(null);
+      socket.emit("system:getRooms");
+      alert(
+        reason === "room_not_found" || reason === "not_playing"
+          ? "This game ended. Please watch the current ongoing game."
+          : "Cannot watch this game right now. Please try again.",
+      );
+    };
+
     socket.on("system:roomsList", handleRoomsList);
     socket.on("system:roomCreated", handleRoomCreated);
     socket.on("system:roomUpdate", handleRoomUpdate);
@@ -240,6 +285,8 @@ export default function GameLobby() {
     socket.on("system:joinDenied", handleJoinDenied);
     socket.on("system:joinSuccess", handleJoinSuccess);
     socket.on("system:joinAsSpectator", handleSpectatorJoin);
+    socket.on("system:spectateSuccess", handleSpectateSuccess);
+    socket.on("system:spectateDenied", handleSpectateDenied);
     socket.on("error", handleSocketError);
 
     return () => {
@@ -254,6 +301,8 @@ export default function GameLobby() {
       socket.off("system:joinDenied", handleJoinDenied);
       socket.off("system:joinSuccess", handleJoinSuccess);
       socket.off("system:joinAsSpectator", handleSpectatorJoin);
+      socket.off("system:spectateSuccess", handleSpectateSuccess);
+      socket.off("system:spectateDenied", handleSpectateDenied);
       socket.off("error", handleSocketError);
       if (joinTimeoutRef.current) {
         clearTimeout(joinTimeoutRef.current);
@@ -262,22 +311,40 @@ export default function GameLobby() {
     };
   }, [socket, navigate, betAmounts]);
 
-  const joinRoom = useCallback((betAmount) => {
-    if (!user) return alert("Please login to join a room");
-    setJoinLoading(betAmount);
-    socket.emit("system:joinRoom", {
-      betAmount,
-      userId: user.id,
-      username: user.name,
-    });
-    if (joinTimeoutRef.current) {
-      clearTimeout(joinTimeoutRef.current);
-    }
-    joinTimeoutRef.current = setTimeout(() => {
-      setJoinLoading(null);
-      alert("Join request timed out. Please try again.");
-    }, 8000);
-  }, [user, socket]);
+  const joinRoom = useCallback(
+    (betAmount) => {
+      if (!user) return alert("Please login to join a room");
+      setJoinLoading(betAmount);
+      socket.emit("system:joinRoom", {
+        betAmount,
+        userId: user.id,
+        username: user.name,
+      });
+      if (joinTimeoutRef.current) {
+        clearTimeout(joinTimeoutRef.current);
+      }
+      joinTimeoutRef.current = setTimeout(() => {
+        setJoinLoading(null);
+        alert("Join request timed out. Please try again.");
+      }, 8000);
+    },
+    [user, socket],
+  );
+
+  const spectateRoom = useCallback(
+    (roomId, betAmount) => {
+      setJoinLoading(roomId);
+      socket.emit("system:spectateRoom", { roomId, betAmount });
+      if (joinTimeoutRef.current) {
+        clearTimeout(joinTimeoutRef.current);
+      }
+      joinTimeoutRef.current = setTimeout(() => {
+        setJoinLoading(null);
+        alert("Spectate request timed out. Please try again.");
+      }, 8000);
+    },
+    [socket],
+  );
 
   const leaveRoom = () => {
     if (!user) return;
@@ -313,171 +380,190 @@ export default function GameLobby() {
 
   return (
     <div
-      className="relative min-h-screen overflow-hidden pb-24"
-      style={{ backgroundColor: UI_COLORS.base, color: UI_COLORS.surface }}
+      className="min-h-screen px-2 pt-2 pb-4"
+      style={{ backgroundColor: UI_COLORS.pageBg }}
     >
-      <WalletBadge />
-      <div className="absolute inset-0 pointer-events-none">
-        {backgroundStars.map((star) => (
-          <StarIcon
-            key={star.id}
-            className="absolute"
-            style={{
-              left: `${star.left}%`,
-              top: `${star.top}%`,
-              width: `${star.size}px`,
-              height: `${star.size}px`,
-              opacity: star.opacity,
-              color: UI_COLORS.accent,
-              animation: `twinkle ${star.duration}s ease-in-out infinite`,
-              animationDelay: `${star.delay}s`,
-            }}
-          />
-        ))}
-      </div>
-
-      <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 sm:px-6 lg:px-10 py-10">
-        <div className="flex items-center justify-between">
-          <div
-            className="inline-flex items-center gap-2 rounded-full border px-4 py-1 text-xs sm:text-sm font-semibold uppercase tracking-[0.3em]"
-            style={{
-              borderColor: UI_COLORS.accent,
-              backgroundColor: UI_COLORS.surface,
-              color: UI_COLORS.base,
-            }}
-          >
-            Games
-          </div>
+      <div className="mx-auto w-full max-w-md">
+        <div className="grid grid-cols-2 gap-2">
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition disabled:opacity-50 border"
+            className="rounded-2xl border px-3 py-2 text-left disabled:opacity-60"
             style={{
-              backgroundColor: UI_COLORS.accent,
-              color: UI_COLORS.surface,
-              borderColor: UI_COLORS.surface,
+              backgroundColor: UI_COLORS.tileBg,
+              borderColor: UI_COLORS.tileBorder,
+              color: UI_COLORS.textDark,
             }}
           >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-            Reload
+            <p className="text-xs font-bold">Refresh</p>
+            <p className="mt-1 inline-flex items-center gap-2 text-lg font-black leading-none">
+              <RefreshCw
+                className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`}
+              />
+              Rooms
+            </p>
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-2 space-y-2">
           {betAmounts.map((amount) => {
-            const room = rooms.find((r) => r.betAmount === amount);
-            const isPlaying = room?.status === "playing";
-            const isWaiting = room?.status === "waiting";
+            const waitingRoom = rooms.find(
+              (r) => r.betAmount === amount && r.status === "waiting",
+            );
+            const playingRoom = rooms.find(
+              (r) => r.betAmount === amount && r.status === "playing",
+            );
+            const room = waitingRoom || playingRoom;
+            const isPlaying = !waitingRoom && !!playingRoom;
+            const isWaiting = !!waitingRoom;
             const playersCount = room?.joinedPlayers?.length ?? 0;
-            const isJoined = isWaiting && room?.joinedPlayers?.some((p) => p.userId === user?.id);
+            const isJoined =
+              isWaiting &&
+              room?.joinedPlayers?.some((p) => p.userId === user?.id);
             const secondsLeft =
               room && room.expiresAt && isWaiting ? countdowns[room.id] : null;
 
             return (
               <div
                 key={amount}
-                className={`group rounded-3xl border-2 px-5 py-4 transition-all duration-300 ${isJoined ? "ring-2" : ""}`}
+                className="rounded-2xl border p-2"
                 style={{
-                  borderColor: UI_COLORS.accent,
-                  backgroundColor: UI_COLORS.surface,
-                  color: UI_COLORS.base,
-                  boxShadow: isJoined ? `0 0 0 2px ${UI_COLORS.accent}` : "none",
+                  backgroundColor: UI_COLORS.panelBg,
+                  borderColor: UI_COLORS.tileBorder,
                 }}
               >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.25em] font-bold" style={{ color: UI_COLORS.accent }}>
-                      Stake
-                    </p>
-                    <h2 className="mt-2 text-3xl font-black">
-                      {amount} Br
-                    </h2>
-                  </div>
-                  <div
-                    className="rounded-2xl px-3 py-1 text-xs font-black uppercase tracking-widest"
-                    style={{
-                      backgroundColor: isPlaying ? UI_COLORS.base : UI_COLORS.accent,
-                      color: UI_COLORS.surface,
-                    }}
-                  >
-                    {isPlaying ? "Live" : isWaiting ? "Open" : "Soon"}
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-1.5 text-sm font-bold" style={{ color: UI_COLORS.base }}>
-                  {isPlaying ? (
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Live game
+                <div
+                  className="rounded-xl border p-2"
+                  style={{
+                    backgroundColor: UI_COLORS.cardBg,
+                    borderColor: UI_COLORS.tileBorder,
+                    color: UI_COLORS.textDark,
+                  }}
+                >
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <div
+                      className="rounded-lg border px-2 py-2"
+                      style={{
+                        backgroundColor: UI_COLORS.tileBg,
+                        borderColor: UI_COLORS.tileBorder,
+                      }}
+                    >
+                      <p className="text-[10px] font-bold">Stake</p>
+                      <p className="mt-1 text-lg font-black leading-none">
+                        {amount} Br
+                      </p>
                     </div>
-                  ) : isWaiting ? (
-                    <>
-                      <div className="flex items-center gap-2">
+                    <div
+                      className="rounded-lg border px-2 py-2"
+                      style={{
+                        backgroundColor: UI_COLORS.tileBg,
+                        borderColor: UI_COLORS.tileBorder,
+                      }}
+                    >
+                      <p className="text-[10px] font-bold">Players</p>
+                      <p className="mt-1 text-lg font-black leading-none inline-flex items-center gap-1">
                         <Users className="h-4 w-4" />
-                        {playersCount}/{maxPlayers} players
-                      </div>
-                      {secondsLeft !== null && (
-                        <div className="flex items-center gap-2">
-                          <TimerIcon className="h-4 w-4" />
-                          {secondsLeft}s
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Preparing...
+                        {playersCount}/{maxPlayers}
+                      </p>
+                    </div>
+                    <div
+                      className="rounded-lg border px-2 py-2"
+                      style={{
+                        backgroundColor: UI_COLORS.tileBg,
+                        borderColor: UI_COLORS.tileBorder,
+                      }}
+                    >
+                      <p className="text-[10px] font-bold">Status</p>
+                      <p className="mt-1 text-sm font-black leading-none">
+                        {isPlaying ? "Ongoing" : isWaiting ? "Waiting" : "Soon"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {isWaiting && secondsLeft !== null && (
+                    <div
+                      className="mt-2 rounded-lg border px-2 py-1.5 text-xs font-bold inline-flex items-center gap-1.5"
+                      style={{
+                        backgroundColor: UI_COLORS.tileBg,
+                        borderColor: UI_COLORS.tileBorder,
+                        color: UI_COLORS.textDark,
+                      }}
+                    >
+                      <TimerIcon className="h-3.5 w-3.5" />
+                      {secondsLeft}s remaining
                     </div>
                   )}
-                </div>
 
-                <div className="mt-4 flex gap-2">
-                  {isPlaying ? (
-                    <button
-                      disabled
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black cursor-not-allowed border"
-                      style={{ backgroundColor: UI_COLORS.base, color: UI_COLORS.surface, borderColor: UI_COLORS.accent }}
-                    >
-                      <Gamepad2 className="h-4 w-4" />
-                      Wait
-                    </button>
-                  ) : isWaiting && isJoined ? (
-                    <button
-                      onClick={leaveRoom}
-                      className="flex-1 rounded-2xl border px-4 py-2.5 text-sm font-black transition"
-                      style={{ borderColor: UI_COLORS.base, backgroundColor: UI_COLORS.surface, color: UI_COLORS.base }}
-                    >
-                      Leave
-                    </button>
-                  ) : isWaiting ? (
-                    <button
-                      onClick={() => joinRoom(amount)}
-                      disabled={
-                        joinLoading === amount || playersCount >= maxPlayers
-                      }
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-50 border"
-                      style={{ backgroundColor: UI_COLORS.accent, color: UI_COLORS.surface, borderColor: UI_COLORS.base }}
-                    >
-                      <Gamepad2 className="h-4 w-4" />
-                      {joinLoading === amount ? "Joining..." : "Join"}
-                    </button>
-                  ) : (
-                    <button
-                      disabled
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-black cursor-not-allowed border"
-                      style={{ backgroundColor: UI_COLORS.base, color: UI_COLORS.surface, borderColor: UI_COLORS.accent }}
-                    >
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Soon
-                    </button>
-                  )}
+                  <div className="mt-2 flex gap-2">
+                    {isPlaying ? (
+                      <button
+                        onClick={() => spectateRoom(playingRoom.id, amount)}
+                        disabled={joinLoading === playingRoom.id}
+                        className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-black disabled:opacity-60 border"
+                        style={{
+                          backgroundColor: UI_COLORS.primary,
+                          color: "#fff",
+                          borderColor: UI_COLORS.tileBorder,
+                        }}
+                      >
+                        <Eye className="h-4 w-4" />
+                        {joinLoading === playingRoom.id
+                          ? "Joining..."
+                          : "Watch"}
+                      </button>
+                    ) : isWaiting && isJoined ? (
+                      <button
+                        onClick={leaveRoom}
+                        className="flex-1 rounded-xl border px-3 py-2 text-sm font-black"
+                        style={{
+                          borderColor: UI_COLORS.tileBorder,
+                          backgroundColor: UI_COLORS.tileBg,
+                          color: UI_COLORS.textDark,
+                        }}
+                      >
+                        Leave
+                      </button>
+                    ) : isWaiting ? (
+                      <button
+                        onClick={() => joinRoom(amount)}
+                        disabled={
+                          joinLoading === amount || playersCount >= maxPlayers
+                        }
+                        className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-black disabled:cursor-not-allowed disabled:opacity-60 border"
+                        style={{
+                          backgroundColor: UI_COLORS.primary,
+                          color: "#fff",
+                          borderColor: UI_COLORS.tileBorder,
+                        }}
+                      >
+                        {joinLoading === amount ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Gamepad2 className="h-4 w-4" />
+                        )}
+                        {joinLoading === amount ? "Joining..." : "Join"}
+                      </button>
+                    ) : (
+                      <button
+                        disabled
+                        className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-black cursor-not-allowed border"
+                        style={{
+                          backgroundColor: UI_COLORS.tileBg,
+                          color: UI_COLORS.textDark,
+                          borderColor: UI_COLORS.tileBorder,
+                        }}
+                      >
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Soon
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
       </div>
-      <BottomNavbar />
     </div>
   );
 }

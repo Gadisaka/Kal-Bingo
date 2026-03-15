@@ -23,6 +23,7 @@ import {
   getRoomGamePreparation,
   getOptimalCardForHuman,
   cleanupRoomPreparation,
+  releaseBotsFromRoom,
 } from "../services/botInjector.js";
 import GameHistory from "../model/gameHistory.js";
 import { checkWinningPattern } from "../utils/patternChecker.js";
@@ -50,12 +51,25 @@ function roomHasHumanPlayers(room) {
 }
 
 /**
+ * Human players who joined but did not pick any cartela before game starts.
+ * They should be treated as spectators during the playing phase.
+ */
+function getSpectatorUserIdsForRoom(room) {
+  const selectedUserIds = new Set(
+    Object.values(room?.selectedCartelas || {}).map((c) => String(c?.userId))
+  );
+  return (room?.joinedPlayers || [])
+    .filter((p) => !p.socketId?.startsWith("bot-"))
+    .map((p) => String(p.userId))
+    .filter((id) => !selectedUserIds.has(id));
+}
+
+/**
  * Start a countdown for a room with real-time updates
  */
 function startRoomCountdown(io, roomId, seconds, onComplete) {
   let remainingSeconds = seconds;
   let completed = false;
-  let autoAssigned = false;
 
   console.log(
     `[startRoomCountdown] Starting countdown for room ${roomId}, duration: ${seconds}s`
@@ -76,17 +90,8 @@ function startRoomCountdown(io, roomId, seconds, onComplete) {
       io.to(roomId).emit("room:countdownWarning", {
         roomId,
         message:
-          "Choose a cartela number or you will be assigned automatically",
+          "Choose a cartela number or you will join as spectator",
       });
-    }
-
-    // At 5 seconds, auto-assign cartelas to players who haven't selected any
-    if (remainingSeconds === 5 && !autoAssigned) {
-      autoAssigned = true;
-      const room = getRoomById(roomId);
-      if (room) {
-        autoAssignCartelasForSystemRoom(io, roomId, room);
-      }
     }
 
     if (remainingSeconds <= 0) {
@@ -286,7 +291,9 @@ async function callRandomNumber(io, roomId) {
 }
 function startNumberCallingInterval(io, roomId) {
   if (calledNumbersIntervalByRoom[roomId]) return;
-  calledNumbersByRoom[roomId] = [];
+  if (!calledNumbersByRoom[roomId]) {
+    calledNumbersByRoom[roomId] = [];
+  }
   calledNumbersIntervalByRoom[roomId] = setInterval(async () => {
     const hasRemaining = await callRandomNumber(io, roomId);
     if (!hasRemaining) {
@@ -377,11 +384,12 @@ function startNumberCallingInterval(io, roomId) {
             message: "Game ended - no winner",
           });
 
+          releaseBotsFromRoom(roomId);
+
           // Cleanup after delay, then auto-create next room
           setTimeout(async () => {
             const betAmt = room.betAmount;
             await removeFinishedRoom(roomId);
-            cleanupRoomPreparation(roomId);
             io.emit("system:roomRemoved", { roomId });
             createNextRoomForStake(io, betAmt);
           }, 5000);
@@ -708,13 +716,14 @@ async function checkAndClaimBotBingo(io, roomId) {
           }
         });
 
+        releaseBotsFromRoom(roomId);
+
         // Cleanup after delay, then auto-create next room
         const botWinBetAmount = room.betAmount;
         setTimeout(async () => {
           try {
             await removeFinishedRoom(roomId);
             delete calledNumbersByRoom[roomId];
-            cleanupRoomPreparation(roomId);
             console.log(`🗑️ [bot-win] Room ${roomId} cleaned up`);
             createNextRoomForStake(io, botWinBetAmount);
           } catch (cleanupErr) {
@@ -739,12 +748,12 @@ async function checkAndClaimBotBingo(io, roomId) {
  */
 async function createNextRoomForStake(io, betAmount) {
   try {
-    const existing = getSystemRooms().find(
-      (r) => r.betAmount === betAmount && (r.status === "waiting" || r.status === "playing")
+    const existingWaiting = getSystemRooms().find(
+      (r) => r.betAmount === betAmount && r.status === "waiting"
     );
-    if (existing) {
-      console.log(`[auto-cycle] Room already exists for stake ${betAmount} (${existing.id}, ${existing.status}), skipping`);
-      return existing;
+    if (existingWaiting) {
+      console.log(`[auto-cycle] Waiting room already exists for stake ${betAmount} (${existingWaiting.id}), skipping`);
+      return existingWaiting;
     }
 
     const room = await createSystemRoom(betAmount);
@@ -768,85 +777,80 @@ async function createNextRoomForStake(io, betAmount) {
         const currentRoom = getRoomById(room.id);
         if (!currentRoom) return;
 
-        if (currentRoom.joinedPlayers.length === 0) {
-          console.log(`[auto-cycle] Countdown ended with 0 players for room ${room.id}, recycling`);
-          await removeWaitingRoom(room.id);
-          io.emit("system:roomRemoved", { roomId: room.id });
-          createNextRoomForStake(io, betAmount);
-        } else {
-          const promoted = await updateRoomStatusById(room.id, "playing");
-          if (promoted) {
-            console.log(`[auto-cycle] Room ${room.id} promoted to playing`);
-            io.emit("system:roomUpdate", promoted);
-            io.to(promoted.id).emit("game:start", {
-              roomId: promoted.id,
-              betAmount: promoted.betAmount,
-            });
-            handleRoomBecamePlaying(io, promoted);
+        const promoted = await updateRoomStatusById(room.id, "playing");
+        if (promoted) {
+          console.log(`[auto-cycle] Room ${room.id} promoted to playing (${promoted.joinedPlayers.length} players)`);
+          const spectatorUserIds = getSpectatorUserIdsForRoom(promoted);
+          io.emit("system:roomUpdate", promoted);
+          io.to(promoted.id).emit("game:start", {
+            roomId: promoted.id,
+            betAmount: promoted.betAmount,
+            spectatorUserIds,
+          });
+          handleRoomBecamePlaying(io, promoted);
 
-            if (roomHasHumanPlayers(promoted)) {
-              try {
-                const exists = await GameHistory.findOne({
-                  roomId: promoted.id, gameType: "system", gameStatus: "playing",
+          if (roomHasHumanPlayers(promoted)) {
+            try {
+              const exists = await GameHistory.findOne({
+                roomId: promoted.id, gameType: "system", gameStatus: "playing",
+              });
+              if (!exists) {
+                try { await recordSystemRoomWinCutRevenue(promoted); } catch (e) {
+                  console.error("[auto-cycle] Win-cut record error:", e.message);
+                }
+                try {
+                  const txResult = await logSystemGameStakeTransactions(promoted.id);
+                  console.log(`[auto-cycle] Logged ${txResult.logged} stake transactions for room ${promoted.id}`);
+                } catch (e) {
+                  console.error("[auto-cycle] Failed to log stake transactions:", e.message);
+                }
+                await GameHistory.create({
+                  roomId: promoted.id, gameType: "system", players: promoted.joinedPlayers,
+                  winner: null, stake: promoted.betAmount, gameStatus: "playing",
+                  max_players: promoted.maxPlayers, hostUserId: null,
                 });
-                if (!exists) {
-                  try { await recordSystemRoomWinCutRevenue(promoted); } catch (e) {
-                    console.error("[auto-cycle] Win-cut record error:", e.message);
-                  }
-                  try {
-                    const txResult = await logSystemGameStakeTransactions(promoted.id);
-                    console.log(`[auto-cycle] Logged ${txResult.logged} stake transactions for room ${promoted.id}`);
-                  } catch (e) {
-                    console.error("[auto-cycle] Failed to log stake transactions:", e.message);
-                  }
-                  await GameHistory.create({
-                    roomId: promoted.id, gameType: "system", players: promoted.joinedPlayers,
-                    winner: null, stake: promoted.betAmount, gameStatus: "playing",
-                    max_players: promoted.maxPlayers, hostUserId: null,
-                  });
-                }
-              } catch (e) {
-                console.error("[auto-cycle] Game history save error:", e.message);
               }
-            } else {
-              console.log(`[auto-cycle] Bot-only game for room ${promoted.id}, skipping DB writes`);
+            } catch (e) {
+              console.error("[auto-cycle] Game history save error:", e.message);
             }
+          } else {
+            console.log(`[auto-cycle] Bot-only game for room ${promoted.id}, skipping DB writes`);
+          }
 
-            const playingTimeouts = io.playingTimeouts || (io.playingTimeouts = new Map());
-            const existingPlayTimeout = playingTimeouts.get(promoted.id);
-            if (existingPlayTimeout) clearTimeout(existingPlayTimeout);
-            const timeout = setTimeout(async () => {
-              try {
-                const current = await updateRoomStatusById(promoted.id, "cancelled");
-                if (current) {
-                  io.emit("system:roomUpdate", current);
-                  const cancelledExists = await GameHistory.findOne({
-                    roomId: current.id, gameType: "system", gameStatus: "cancelled",
+          const playingTimeouts = io.playingTimeouts || (io.playingTimeouts = new Map());
+          const existingPlayTimeout = playingTimeouts.get(promoted.id);
+          if (existingPlayTimeout) clearTimeout(existingPlayTimeout);
+          const timeout = setTimeout(async () => {
+            try {
+              const current = await updateRoomStatusById(promoted.id, "cancelled");
+              if (current) {
+                io.emit("system:roomUpdate", current);
+                const cancelledExists = await GameHistory.findOne({
+                  roomId: current.id, gameType: "system", gameStatus: "cancelled",
+                });
+                if (!cancelledExists) {
+                  const playingHistory = await GameHistory.findOne({
+                    roomId: current.id, gameType: "system", gameStatus: "playing",
                   });
-                  if (!cancelledExists) {
-                    const playingHistory = await GameHistory.findOne({
-                      roomId: current.id, gameType: "system", gameStatus: "playing",
+                  if (playingHistory) {
+                    playingHistory.gameStatus = "cancelled";
+                    await playingHistory.save();
+                  } else {
+                    await GameHistory.create({
+                      roomId: current.id, winner: null, players: current.joinedPlayers,
+                      gameStatus: "cancelled", gameType: "system", hostUserId: null,
+                      stake: current.betAmount, max_players: current.maxPlayers,
                     });
-                    if (playingHistory) {
-                      playingHistory.gameStatus = "cancelled";
-                      await playingHistory.save();
-                    } else {
-                      await GameHistory.create({
-                        roomId: current.id, winner: null, players: current.joinedPlayers,
-                        gameStatus: "cancelled", gameType: "system", hostUserId: null,
-                        stake: current.betAmount, max_players: current.maxPlayers,
-                      });
-                    }
                   }
                 }
-              } catch (e) {
-                console.error("[auto-cycle] playing 5-minute cancel error:", e.message);
-              } finally {
-                playingTimeouts.delete(promoted.id);
               }
-            }, 5 * 60 * 1000);
-            playingTimeouts.set(promoted.id, timeout);
-          }
+            } catch (e) {
+              console.error("[auto-cycle] playing 5-minute cancel error:", e.message);
+            } finally {
+              playingTimeouts.delete(promoted.id);
+            }
+          }, 5 * 60 * 1000);
+          playingTimeouts.set(promoted.id, timeout);
         }
       } catch (e) {
         console.error("[auto-cycle] countdown onComplete error:", e.message);
@@ -875,13 +879,13 @@ export async function ensureRoomsForAllStakes(io) {
 
     for (const stake of stakes) {
       const existing = getSystemRooms().find(
-        (r) => r.betAmount === stake && (r.status === "waiting" || r.status === "playing")
+        (r) => r.betAmount === stake && r.status === "waiting"
       );
       if (!existing) {
         await createNextRoomForStake(io, stake);
       } else {
-        console.log(`[auto-cycle] Room already exists for stake ${stake}: ${existing.id} (${existing.status})`);
-        if (existing.status === "waiting" && !existing.expiresAt) {
+        console.log(`[auto-cycle] Waiting room already exists for stake ${stake}: ${existing.id}`);
+        if (!existing.expiresAt) {
           let waitingRoomDuration = 60;
           try {
             waitingRoomDuration = settings.systemGames?.waitingRoomDuration || 60;
@@ -892,17 +896,17 @@ export async function ensureRoomsForAllStakes(io) {
               try {
                 const currentRoom = getRoomById(existing.id);
                 if (!currentRoom) return;
-                if (currentRoom.joinedPlayers.length === 0) {
-                  await removeWaitingRoom(existing.id);
-                  io.emit("system:roomRemoved", { roomId: existing.id });
-                  createNextRoomForStake(io, stake);
-                } else {
-                  const promoted = await updateRoomStatusById(existing.id, "playing");
-                  if (promoted) {
-                    io.emit("system:roomUpdate", promoted);
-                    io.to(promoted.id).emit("game:start", { roomId: promoted.id, betAmount: promoted.betAmount });
-                    handleRoomBecamePlaying(io, promoted);
-                  }
+                const promoted = await updateRoomStatusById(existing.id, "playing");
+                if (promoted) {
+                  console.log(`[auto-cycle] Room ${existing.id} promoted to playing (${promoted.joinedPlayers.length} players)`);
+                  const spectatorUserIds = getSpectatorUserIdsForRoom(promoted);
+                  io.emit("system:roomUpdate", promoted);
+                  io.to(promoted.id).emit("game:start", {
+                    roomId: promoted.id,
+                    betAmount: promoted.betAmount,
+                    spectatorUserIds,
+                  });
+                  handleRoomBecamePlaying(io, promoted);
                 }
               } catch (e) {
                 console.error("[auto-cycle] existing room countdown error:", e.message);
@@ -934,6 +938,68 @@ export function registerRoomHandlers(io, socket) {
   socket.on("system:getRooms", () => {
     const rooms = getSystemRooms();
     socket.emit("system:roomsList", rooms);
+  });
+
+  // Spectate an ongoing playing room by roomId (with stake fallback)
+  socket.on("system:spectateRoom", async ({ roomId, betAmount }) => {
+    console.log(
+      `[spectate] request socket=${socket.id} roomId=${roomId} betAmount=${betAmount}`
+    );
+    let targetRoom = getRoomById(roomId);
+
+    // If room is missing/not playing in memory, try to find the active playing room for the same stake
+    if (!targetRoom || targetRoom.status !== "playing") {
+      if (typeof betAmount === "number") {
+        targetRoom = getSystemRooms().find(
+          (r) => r.betAmount === betAmount && r.status === "playing"
+        );
+      }
+    }
+
+    if (!targetRoom) {
+      console.log("[spectate] denied: room_not_found");
+      socket.emit("system:spectateDenied", {
+        reason: "room_not_found",
+      });
+      return;
+    }
+
+    // DB truth check: prevent spectating ghost rooms that cron has already cancelled
+    const dbRoom = await GameRoom.findById(targetRoom.id).lean();
+    if (!dbRoom || dbRoom.gameStatus !== "playing") {
+      console.log(
+        `[spectate] denied: db status is ${dbRoom?.gameStatus || "missing"} for ${targetRoom.id}`
+      );
+      const synced = await updateRoomStatusById(
+        targetRoom.id,
+        dbRoom?.gameStatus || "cancelled"
+      );
+      if (synced) io.emit("system:roomUpdate", synced);
+      socket.emit("system:spectateDenied", {
+        reason: dbRoom ? "not_playing" : "room_not_found",
+      });
+      return;
+    }
+
+    // Recovery safety: if playing room has no active number-calling interval, start one.
+    // This can happen after process restarts while a room is already in "playing" state.
+    if (!calledNumbersIntervalByRoom[targetRoom.id]) {
+      console.log(
+        `[spectate] recovery: starting number interval for room ${targetRoom.id}`
+      );
+      startNumberCallingInterval(io, targetRoom.id);
+    }
+
+    socket.join(targetRoom.id);
+    console.log(
+      `[spectate] success room=${targetRoom.id} called=${(
+        calledNumbersByRoom[targetRoom.id] || []
+      ).length}`
+    );
+    socket.emit("system:spectateSuccess", {
+      room: targetRoom,
+      calledNumbers: calledNumbersByRoom[targetRoom.id] || [],
+    });
   });
 
   // Join a system-hosted room by bet amount
@@ -1023,9 +1089,11 @@ export function registerRoomHandlers(io, socket) {
         room.joinedPlayers.length === room.maxPlayers
       ) {
         console.log("🎮 Room is full! Starting game...");
+        const spectatorUserIds = getSpectatorUserIdsForRoom(room);
         io.to(room.id).emit("game:start", {
           roomId: room.id,
           betAmount: room.betAmount,
+          spectatorUserIds,
         });
         handleRoomBecamePlaying(io, room);
         if (roomHasHumanPlayers(room)) {
@@ -1208,65 +1276,66 @@ export function registerRoomHandlers(io, socket) {
           try {
             console.log(`⏰ Countdown completed for room ${roomId}`);
             const currentRoom = getRoomById(roomId);
-            if (currentRoom && currentRoom.joinedPlayers.length >= 1) {
-              const promoted = await updateRoomStatusById(roomId, "playing");
-              if (promoted) {
-                console.log(`✅ Room ${roomId} promoted to playing`);
-                io.emit("system:roomUpdate", promoted);
-                io.to(promoted.id).emit("game:start", {
-                  roomId: promoted.id,
-                  betAmount: promoted.betAmount,
-                });
-                handleRoomBecamePlaying(io, promoted);
-                if (roomHasHumanPlayers(promoted)) {
-                  try {
-                    const exists = await GameHistory.findOne({
+            if (!currentRoom) return;
+            const promoted = await updateRoomStatusById(roomId, "playing");
+            if (promoted) {
+              console.log(`✅ Room ${roomId} promoted to playing (${promoted.joinedPlayers.length} players)`);
+              const spectatorUserIds = getSpectatorUserIdsForRoom(promoted);
+              io.emit("system:roomUpdate", promoted);
+              io.to(promoted.id).emit("game:start", {
+                roomId: promoted.id,
+                betAmount: promoted.betAmount,
+                spectatorUserIds,
+              });
+              handleRoomBecamePlaying(io, promoted);
+              if (roomHasHumanPlayers(promoted)) {
+                try {
+                  const exists = await GameHistory.findOne({
+                    roomId: promoted.id,
+                    gameType: "system",
+                    gameStatus: "playing",
+                  });
+                  if (!exists) {
+                    try {
+                      await recordSystemRoomWinCutRevenue(promoted);
+                    } catch (walletErr) {
+                      console.error(
+                        "[revenue] Win-cut record error (system playing):",
+                        walletErr.message
+                      );
+                    }
+                    try {
+                      const txResult = await logSystemGameStakeTransactions(
+                        promoted.id
+                      );
+                      console.log(
+                        `💰 [sockets] Logged ${txResult.logged} stake transactions for room ${promoted.id}`
+                      );
+                    } catch (txErr) {
+                      console.error(
+                        "[sockets] Failed to log stake transactions:",
+                        txErr.message
+                      );
+                    }
+                    await GameHistory.create({
                       roomId: promoted.id,
                       gameType: "system",
+                      players: promoted.joinedPlayers,
+                      winner: null,
+                      stake: promoted.betAmount,
                       gameStatus: "playing",
+                      max_players: promoted.maxPlayers,
+                      hostUserId: null,
                     });
-                    if (!exists) {
-                      try {
-                        await recordSystemRoomWinCutRevenue(promoted);
-                      } catch (walletErr) {
-                        console.error(
-                          "[revenue] Win-cut record error (system playing):",
-                          walletErr.message
-                        );
-                      }
-                      try {
-                        const txResult = await logSystemGameStakeTransactions(
-                          promoted.id
-                        );
-                        console.log(
-                          `💰 [sockets] Logged ${txResult.logged} stake transactions for room ${promoted.id}`
-                        );
-                      } catch (txErr) {
-                        console.error(
-                          "[sockets] Failed to log stake transactions:",
-                          txErr.message
-                        );
-                      }
-                      await GameHistory.create({
-                        roomId: promoted.id,
-                        gameType: "system",
-                        players: promoted.joinedPlayers,
-                        winner: null,
-                        stake: promoted.betAmount,
-                        gameStatus: "playing",
-                        max_players: promoted.maxPlayers,
-                        hostUserId: null,
-                      });
-                    }
-                  } catch (e) {
-                    console.error(
-                      "[sockets] Game history (playing) save error:",
-                      e.message
-                    );
                   }
-                } else {
-                  console.log(`[sockets] Bot-only game for room ${promoted.id}, skipping DB writes`);
+                } catch (e) {
+                  console.error(
+                    "[sockets] Game history (playing) save error:",
+                    e.message
+                  );
                 }
+              } else {
+                console.log(`[sockets] Bot-only game for room ${promoted.id}, skipping DB writes`);
               }
             }
           } catch (e) {
@@ -1419,11 +1488,12 @@ export function registerRoomHandlers(io, socket) {
           );
         }
 
+        releaseBotsFromRoom(roomId);
+
         // Remove from memory after a delay, then auto-create next room
         const finishedBetAmount = room.betAmount;
         setTimeout(async () => {
           await removeFinishedRoom(roomId);
-          cleanupRoomPreparation(roomId);
           io.emit("system:roomRemoved", { roomId });
           console.log(`[sockets] Room ${roomId} removed from memory`);
           createNextRoomForStake(io, finishedBetAmount);
@@ -1661,6 +1731,8 @@ export function registerRoomHandlers(io, socket) {
           winner: winnerData,
           prize: rawPot,
         });
+
+        releaseBotsFromRoom(roomId);
 
         const finalUserId = userId;
         const finalWinnerData = winnerData;

@@ -6,7 +6,6 @@ import React, {
   useMemo,
 } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { Volume2, VolumeX } from "lucide-react";
 import { Howl } from "howler";
 import { socketClient } from "../sockets/socket";
 import { bingoCards } from "../libs/BingoCards";
@@ -17,11 +16,11 @@ import stopgameSoundSrc from "../assets/Sound/stopgame.mp3";
 
 // --- CONSTANTS & CONFIG ---
 const BINGO_COLORS = {
-  B: { hex: "#FF6B6B", name: "red" },
-  I: { hex: "#FFD93D", name: "yellow" },
-  N: { hex: "#6BCB77", name: "green" },
-  G: { hex: "#4D96FF", name: "blue" },
-  O: { hex: "#FF85F3", name: "pink" },
+  B: { hex: "#F5A100", name: "orange" },
+  I: { hex: "#0C9808", name: "green" },
+  N: { hex: "#1028F2", name: "blue" },
+  G: { hex: "#EF3A1A", name: "red" },
+  O: { hex: "#78008E", name: "purple" },
 };
 
 const getColumnForNumber = (number) => {
@@ -43,9 +42,16 @@ const getBallData = (num) => {
 
 const CARD_SWIPE_THRESHOLD_PX = 45;
 const UI_COLORS = {
-  base: "#1E2330",
-  surface: "#F2F2EC",
-  accent: "#3A7A45",
+  base: "#2e1c44",
+  surface: "#f4eff9",
+  accent: "#ff7a00",
+  pageBg: "#b39acb",
+  panelBg: "#bca6d5",
+  tileBg: "#e9e9ed",
+  tileBorder: "#d7cae6",
+  textDark: "#2e1c44",
+  called: "#ff7a00",
+  marked: "#0c9808",
 };
 
 export default function PlayingRoom() {
@@ -80,23 +86,28 @@ export default function PlayingRoom() {
   const [room, setRoom] = useState(null);
   const [hasReceivedUpdate, setHasReceivedUpdate] = useState(false);
 
-  // Numbers Logic
-  const [calledNumbersList, setCalledNumbersList] = useState([]);
+  // Numbers Logic — seed from navigation state so spectators see numbers immediately
+  const [calledNumbersList, setCalledNumbersList] = useState(
+    () => navigationState.calledNumbers || [],
+  );
 
   // Display/Animation State
   const [displayCurrentBall, setDisplayCurrentBall] = useState(null);
   const [displayHistory, setDisplayHistory] = useState([]);
-  const [isMainBallPopping, setIsMainBallPopping] = useState(false);
+  const [_isMainBallPopping, setIsMainBallPopping] = useState(false);
 
   // Card Logic
   const [selectedCartelas, setSelectedCartelas] = useState([]);
-  const [allRoomCartelas, setAllRoomCartelas] = useState({}); // Track all cartelas for prize calculation
+  const [allRoomCartelas, setAllRoomCartelas] = useState(
+    () => navigationState.selectedCartelas || {},
+  );
   const [currentCartelaIndex, setCurrentCartelaIndex] = useState(0);
   const [markedNumbers, setMarkedNumbers] = useState({});
   const [, setCardTransition] = useState("");
 
   // Modal/Dialog States
   const [systemWinnerData, setSystemWinnerData] = useState(null);
+  const [winnerCountdown, setWinnerCountdown] = useState(10);
 
   // Notification State
   const [notifications, setNotifications] = useState([]);
@@ -324,6 +335,25 @@ export default function PlayingRoom() {
     hasPlayedStopgameRef.current = false;
   }, [gameRoomId]);
 
+  // Winner modal countdown: hide modal and redirect all players after 10s
+  useEffect(() => {
+    if (!systemWinnerData) return;
+    setWinnerCountdown(10);
+    const intervalId = setInterval(() => {
+      setWinnerCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(intervalId);
+          setSystemWinnerData(null);
+          navigate("/");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [systemWinnerData, navigate]);
+
   // --- AUDIO PLAYBACK EFFECT ---
   useEffect(() => {
     if (!isAudioLoaded || isMuted || !audioUnlocked) return;
@@ -393,7 +423,12 @@ export default function PlayingRoom() {
   // --- ROOM VALIDATION ---
   useEffect(() => {
     if (isSpectator) {
-      if (room && hasReceivedUpdate && room.status !== "playing" && !systemWinnerData) {
+      if (
+        room &&
+        hasReceivedUpdate &&
+        room.status !== "playing" &&
+        !systemWinnerData
+      ) {
         navigate("/");
       }
       return;
@@ -423,10 +458,21 @@ export default function PlayingRoom() {
         setHasReceivedUpdate(true);
       }
     };
+    const handleRoomsList = (roomsList) => {
+      const myRoom = roomsList.find((r) => r.id === gameRoomId);
+      if (myRoom) {
+        setRoom(myRoom);
+        setHasReceivedUpdate(true);
+        if (myRoom.selectedCartelas) {
+          updateCartelaSelections(myRoom.selectedCartelas);
+        }
+      }
+    };
     const handleCartelasState = ({ allCartelas }) =>
       updateCartelaSelections(allCartelas || {});
 
     socket.on("system:roomUpdate", handleRoomUpdate);
+    socket.on("system:roomsList", handleRoomsList);
     socket.on("cartelas-state", handleCartelasState);
     socket.emit("system:getRooms");
     socket.emit("get-cartelas-state", { roomId: gameRoomId });
@@ -434,6 +480,7 @@ export default function PlayingRoom() {
 
     return () => {
       socket.off("system:roomUpdate", handleRoomUpdate);
+      socket.off("system:roomsList", handleRoomsList);
       socket.off("cartelas-state", handleCartelasState);
     };
   }, [activeSocket, gameRoomId, updateCartelaSelections]);
@@ -442,14 +489,14 @@ export default function PlayingRoom() {
     if (!activeSocket || !gameRoomId) return;
     const counter = new NumberCounter(activeSocket, gameRoomId);
     counter.setOnUpdate((count, numbers) => {
-      setCalledNumbersCount(count); // Keeping this to avoid breaking changes if logic depends on it, although unused in render
+      setCalledNumbersCount(count);
       setCalledNumbersList(numbers);
     });
-    if (room?.status === "playing") {
+    if (room?.status === "playing" || isSpectator) {
       activeSocket.emit("get-called-numbers", { roomId: gameRoomId });
     }
     return () => counter.cleanup();
-  }, [activeSocket, gameRoomId, room?.status]);
+  }, [activeSocket, gameRoomId, room?.status, isSpectator]);
 
   // Helper state for linter satisfaction if needed, or just remove
   const [, setCalledNumbersCount] = useState(0);
@@ -457,6 +504,17 @@ export default function PlayingRoom() {
   useEffect(() => {
     if (!activeSocket) return;
     const handlers = {
+      error: (err) => {
+        const message = String(err?.message || "");
+        if (
+          isSpectator &&
+          (message.includes("room_not_found") ||
+            message.includes("Room not found"))
+        ) {
+          showNotification("This game is no longer available", "warning");
+          navigate("/");
+        }
+      },
       "bingo-winner": (d) => {
         if (d.roomId === gameRoomId) {
           setSystemWinnerData(d);
@@ -467,7 +525,7 @@ export default function PlayingRoom() {
       "bingo-check-error": () => showNotification("Error occurred", "error"),
       "bingo-already-won": () => showNotification("Already won", "warning"),
       "system:gameFinished": (d) => {
-        if (d.roomId === gameRoomId && isSpectator) {
+        if (d.roomId === gameRoomId) {
           navigate("/");
         }
       },
@@ -476,6 +534,21 @@ export default function PlayingRoom() {
     return () =>
       Object.entries(handlers).forEach(([e, h]) => activeSocket.off(e, h));
   }, [activeSocket, gameRoomId, showNotification, isSpectator, navigate]);
+
+  const spectatorRoomReady =
+    !isSpectator || (hasReceivedUpdate && room?.status === "playing");
+
+  useEffect(() => {
+    if (!isSpectator) return;
+    // If spectating but we still don't have a confirmed live room after a short grace period,
+    // return to lobby to avoid showing stale/fallback values.
+    const timeout = setTimeout(() => {
+      if (!spectatorRoomReady) {
+        navigate("/");
+      }
+    }, 5000);
+    return () => clearTimeout(timeout);
+  }, [isSpectator, spectatorRoomReady, navigate]);
 
   // --- NAVIGATION ---
   const totalCartelas = selectedCartelas.length;
@@ -573,7 +646,7 @@ export default function PlayingRoom() {
   };
 
   // --- AUDIO CONTROLS ---
-  const handleToggleSound = async () => {
+  const _handleToggleSound = async () => {
     // First click unlocks audio context (required for iOS)
     if (!audioUnlocked) {
       const success = await initializeAudioContext();
@@ -602,7 +675,7 @@ export default function PlayingRoom() {
   const navPrize = navigationState?.prize;
   const navWinCutPercent = navigationState?.winCutPercent ?? 10;
 
-  const calculatePrizeWithWinCut = useCallback(
+  const _calculatePrizeWithWinCut = useCallback(
     (rawPrize) => {
       if (!rawPrize || rawPrize === 0) return 0;
       const winCut = navWinCutPercent;
@@ -613,6 +686,9 @@ export default function PlayingRoom() {
 
   // Calculate prize and player count for display
   const playerCount = useMemo(() => {
+    // In spectator mode, avoid showing fallback values until a live playing room is confirmed.
+    if (!spectatorRoomReady) return 0;
+
     // Primary: actual room data from socket/API
     if (
       room?.joinedPlayers &&
@@ -633,9 +709,12 @@ export default function PlayingRoom() {
       return navPlayerCount;
     }
     return 0;
-  }, [room, allRoomCartelas, navPlayerCount]);
+  }, [room, allRoomCartelas, navPlayerCount, spectatorRoomReady]);
 
   const totalPrize = useMemo(() => {
+    // In spectator mode, avoid fallback prize math until a live playing room is confirmed.
+    if (!spectatorRoomReady) return 0;
+
     // Get stake - prefer room data over nav state
     const stake = Number(room?.stake || room?.betAmount || navStake || 0);
     if (stake === 0) return navPrize || 0; // Fallback if no stake available
@@ -655,9 +734,9 @@ export default function PlayingRoom() {
       cartelasCount = navCartelasCount || 0;
     }
 
-    // Final fallback to player count
+    // Final fallback to player count (do not force this for spectators)
     if (cartelasCount === 0) {
-      cartelasCount = playerCount || 1;
+      cartelasCount = isSpectator ? 0 : playerCount || 1;
     }
 
     // Calculate pot and prize
@@ -674,6 +753,8 @@ export default function PlayingRoom() {
     navWinCutPercent,
     navPrize,
     playerCount,
+    isSpectator,
+    spectatorRoomReady,
   ]);
 
   // Helper function to render winner card with called numbers (yellow) and winning pattern (green)
@@ -692,11 +773,11 @@ export default function PlayingRoom() {
     );
 
     const headerColors = [
-      "#FF6B6B",
-      "#FFD93D",
-      "#6BCB77",
-      "#4D96FF",
-      "#FF85F3",
+      BINGO_COLORS.B.hex,
+      BINGO_COLORS.I.hex,
+      BINGO_COLORS.N.hex,
+      BINGO_COLORS.G.hex,
+      BINGO_COLORS.O.hex,
     ];
 
     return (
@@ -757,9 +838,7 @@ export default function PlayingRoom() {
 
   // Helper to get first 3 letters of name + ***
   const getMaskedWinnerName = (userName) => {
-    if (!userName) return "***";
-    const firstThree = userName.substring(0, 3).toUpperCase();
-    return `${firstThree}***`;
+    return userName;
   };
 
   return (
@@ -819,569 +898,336 @@ export default function PlayingRoom() {
 
       {/* PHONE FRAME */}
       <div
-        className="w-full max-w-[430px] h-[750px] md:h-[750px] md:rounded-[40px] md:border-[12px] relative overflow-hidden shadow-2xl flex flex-col"
-        style={{
-          backgroundColor: UI_COLORS.surface,
-          borderColor: UI_COLORS.base,
-        }}
+        className="w-full max-w-[480px] min-h-screen mx-auto px-1.5 pt-2 pb-4"
+        style={{ backgroundColor: UI_COLORS.pageBg }}
       >
-        {/* --- HEADER --- */}
-        <div
-          className="h-[30%] md:rounded-b-[24px] relative flex flex-col items-center pt-2 shadow-lg z-10"
-          style={{ backgroundColor: UI_COLORS.base }}
-        >
-          {/* Top row: Sound, Info Cards, Reload */}
-          <div className="w-[95%] flex justify-between items-start gap-2">
-            {/* Sound Button */}
+        <div className="grid grid-cols-5 gap-1.5">
+          {[
+            { label: "Derash", value: Math.trunc(Number(totalPrize || 0)) },
+            { label: "Players", value: playerCount || 0 },
+            {
+              label: "Bet",
+              value: Number(room?.stake || room?.betAmount || navStake || 0),
+            },
+            { label: "Call", value: calledNumbersList.length || 0 },
+            { label: "Game N°", value: "1 of 1" },
+          ].map((item) => (
             <div
-              onClick={handleToggleSound}
-              className={`w-[34px] h-[34px] rounded-full flex items-center justify-center cursor-pointer transition-all shrink-0 ${
-                !audioUnlocked
-                  ? "animate-pulse"
-                  : isMuted
-                    ? ""
-                    : ""
-              }`}
+              key={item.label}
+              className="rounded-xl border py-1.5 text-center"
               style={{
-                backgroundColor: audioUnlocked ? UI_COLORS.accent : UI_COLORS.surface,
-              }}
-              title={
-                !audioUnlocked
-                  ? "Tap to enable sound"
-                  : isMuted
-                    ? "Unmute"
-                    : "Mute"
-              }
-            >
-              {!audioUnlocked ? (
-                <Volume2 className="w-5 h-5 text-[#1E2330]" />
-              ) : isMuted ? (
-                <VolumeX className="w-5 h-5 text-[#F2F2EC]" />
-              ) : (
-                <Volume2 className="w-5 h-5 text-[#F2F2EC]" />
-              )}
-            </div>
-
-            {/* Info Cards */}
-            <div className="flex gap-1.5 flex-1 justify-center">
-              <div
-                className="rounded-xl px-2 py-1.5 shadow-lg border"
-                style={{
-                  backgroundColor: UI_COLORS.surface,
-                  borderColor: UI_COLORS.accent,
-                }}
-              >
-                <div
-                  className="text-[8px] font-bold uppercase tracking-wide"
-                  style={{ color: UI_COLORS.base }}
-                >
-                  Prize
-                </div>
-                <div
-                  className="font-black text-sm leading-tight"
-                  style={{ color: UI_COLORS.base }}
-                >
-                  {totalPrize.toFixed(0)}
-                </div>
-              </div>
-
-              <div
-                className="rounded-xl px-2 py-1.5 shadow-lg border"
-                style={{
-                  backgroundColor: UI_COLORS.surface,
-                  borderColor: UI_COLORS.accent,
-                }}
-              >
-                <div
-                  className="text-[8px] font-bold uppercase tracking-wide"
-                  style={{ color: UI_COLORS.base }}
-                >
-                  Players
-                </div>
-                <div
-                  className="font-black text-sm leading-tight"
-                  style={{ color: UI_COLORS.base }}
-                >
-                  {playerCount}
-                </div>
-              </div>
-
-              <div
-                className="rounded-xl px-2 py-1.5 shadow-lg border"
-                style={{
-                  backgroundColor: UI_COLORS.surface,
-                  borderColor: UI_COLORS.accent,
-                }}
-              >
-                <div
-                  className="text-[8px] font-bold uppercase tracking-wide"
-                  style={{ color: UI_COLORS.base }}
-                >
-                  Called
-                </div>
-                <div
-                  className="font-black text-sm leading-tight"
-                  style={{ color: UI_COLORS.base }}
-                >
-                  {calledNumbersList.length}/75
-                </div>
-              </div>
-            </div>
-
-            {/* Reload Button */}
-            <div
-              onClick={() => window.location.reload()}
-              className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-xl cursor-pointer transition shrink-0"
-              style={{
-                backgroundColor: UI_COLORS.accent,
-                color: UI_COLORS.surface,
+                backgroundColor: UI_COLORS.tileBg,
+                borderColor: UI_COLORS.tileBorder,
+                color: UI_COLORS.textDark,
               }}
             >
-              ↻
+              <p className="text-[10px] font-bold leading-none">{item.label}</p>
+              <p className="mt-1 text-[18px] font-black leading-none">
+                {item.value}
+              </p>
             </div>
-          </div>
+          ))}
+        </div>
 
-          {/* MAIN BALL */}
-          <div className="absolute top-[55px] left-1/2 -translate-x-1/2 z-20">
-            {displayCurrentBall ? (
-              <div
-                ref={mainBallRef}
-                style={{
-                  borderColor: displayCurrentBall.hex,
-                  transform: isMainBallPopping ? "scale(0)" : "scale(1)",
-                  backgroundColor: UI_COLORS.surface,
-                  color: UI_COLORS.base,
-                }}
-                className={`w-[90px] h-[90px] rounded-full flex items-center justify-center 
-                            text-[45px] font-black shadow-lg border-[5px] 
-                            transition-transform duration-300 ease-[cubic-bezier(0.175,0.885,0.32,1.275)]`}
-              >
-                {displayCurrentBall.num}
-              </div>
-            ) : (
-              <div
-                className="w-[90px] h-[90px] rounded-full flex items-center justify-center text-sm border-[5px]"
-                style={{
-                  backgroundColor: UI_COLORS.surface,
-                  borderColor: UI_COLORS.accent,
-                  color: UI_COLORS.base,
-                }}
-              >
-                Waiting...
-              </div>
-            )}
-          </div>
-
-          {/* RAIL */}
+        <div className="mt-2 flex gap-1.5 items-stretch">
           <div
-            ref={railWrapperRef}
-            className="mt-auto mb-5 w-[76%] h-[56px] rounded-full flex justify-center items-center px-2 relative box-border overflow-hidden"
-            style={{ backgroundColor: UI_COLORS.accent }}
+            className="w-[39%] rounded-xl border p-1"
+            style={{
+              backgroundColor: UI_COLORS.panelBg,
+              borderColor: UI_COLORS.tileBorder,
+            }}
           >
-            <div
-              ref={railRef}
-              className="flex items-center h-full flex-grow justify-center relative "
-            >
-              {displayHistory.map((ball, index) => (
+            <div className="grid grid-cols-5 gap-1 mb-1">
+              {["B", "I", "N", "G", "O"].map((letter) => (
                 <div
-                  key={ball.id}
-                  style={{
-                    backgroundColor: ball.hex,
-                    left: `${index * 48}px`,
-                  }}
-                  className="absolute w-[40px] h-[40px] rounded-full border-2 border-white flex items-center justify-center text-white font-black text-lg shadow-sm"
+                  key={letter}
+                  className="h-7 rounded-md flex items-center justify-center text-white text-lg font-black leading-none"
+                  style={{ backgroundColor: BINGO_COLORS[letter].hex }}
                 >
-                  {ball.num}
+                  {letter}
                 </div>
               ))}
             </div>
-          </div>
-        </div>
 
-        {/* --- BOARD --- */}
-        <div className="flex-grow p-3 flex gap-2 min-h-0">
-          <div
-            className="w-[142px] shrink-0 self-start h-fit rounded-xl border p-2 flex flex-col"
-            style={{
-              backgroundColor: UI_COLORS.surface,
-              borderColor: UI_COLORS.accent,
-            }}
-          >
-            <h3
-              className="text-[10px] font-black tracking-wide uppercase text-center mb-2"
-              style={{ color: UI_COLORS.base }}
-            >
-              Called
-            </h3>
-            <div className="overflow-y-auto pr-0.5">
-              <div className="grid grid-cols-5 gap-1 mb-1.5">
-                {["B", "I", "N", "G", "O"].map((letter) => (
-                  <div
-                    key={letter}
-                    className="h-5 rounded flex items-center justify-center text-[10px] font-black"
-                    style={{
-                      backgroundColor: UI_COLORS.base,
-                      color: UI_COLORS.surface,
-                    }}
-                  >
-                    {letter}
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-5 gap-1 justify-items-center">
-                {Array.from({ length: 15 }).flatMap((_, rowIdx) =>
-                  [0, 1, 2, 3, 4].map((colIdx) => {
-                    const num = rowIdx + 1 + colIdx * 15;
-                    const isCalled = calledNumbersList.includes(num);
-                    return (
-                      <div
-                        key={num}
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black"
-                        style={{
-                          backgroundColor: isCalled
-                            ? UI_COLORS.accent
-                            : UI_COLORS.surface,
-                          color: isCalled ? UI_COLORS.surface : UI_COLORS.base,
-                          border: `1px solid ${UI_COLORS.accent}`,
-                        }}
-                      >
-                        {num}
-                      </div>
-                    );
-                  }),
-                )}
-              </div>
+            <div className="grid grid-cols-5 gap-1">
+              {Array.from({ length: 15 }).flatMap((_, rowIdx) =>
+                [0, 1, 2, 3, 4].map((colIdx) => {
+                  const num = rowIdx + 1 + colIdx * 15;
+                  const isCalled = calledNumbersList.includes(num);
+                  const isLatest =
+                    num === calledNumbersList[calledNumbersList.length - 1];
+                  const isMarkedOnCurrentCard =
+                    currentCardId &&
+                    (markedNumbers[currentCardId] || []).includes(num);
+                  return (
+                    <div
+                      key={num}
+                      className="h-[36px] rounded-md flex items-center justify-center text-[12px] font-black"
+                      style={{
+                        backgroundColor: isMarkedOnCurrentCard
+                          ? UI_COLORS.marked
+                          : isCalled || isLatest
+                            ? UI_COLORS.called
+                            : "#d9d1e8",
+                        color:
+                          isCalled || isLatest || isMarkedOnCurrentCard
+                            ? "#fff"
+                            : UI_COLORS.textDark,
+                      }}
+                    >
+                      {num}
+                    </div>
+                  );
+                }),
+              )}
             </div>
           </div>
 
-          <div className="flex-1 flex flex-col items-end min-w-0">
-            {isSpectator ? (
-              <div className="w-full flex flex-col items-center justify-center h-full">
-                <div
-                  className="w-[175px] rounded-xl p-4 border-2 shadow-lg flex flex-col items-center justify-center text-center"
-                  style={{
-                    backgroundColor: UI_COLORS.surface,
-                    borderColor: UI_COLORS.accent,
-                    minHeight: "220px",
-                  }}
-                >
-                  <div
-                    className="text-4xl mb-3 animate-pulse"
-                    style={{ color: UI_COLORS.accent }}
-                  >
-                    &#9203;
-                  </div>
-                  <p
-                    className="font-black text-lg mb-1"
-                    style={{ color: UI_COLORS.base }}
-                  >
-                    Please Wait
-                  </p>
-                  <p
-                    className="text-xs font-bold"
-                    style={{ color: UI_COLORS.accent }}
-                  >
-                    You will join the next game
-                  </p>
-                </div>
-              </div>
-            ) : (
-            <>
+          <div className="flex-1 rounded-xl">
             <div
-              className={`w-full grid overflow-y-auto pr-1 ${
-                totalCartelas >= 3
-                  ? "grid-cols-2 gap-x-1.5 gap-y-2 justify-items-stretch"
-                  : "grid-cols-1 gap-2 justify-items-end"
-              }`}
-              style={{ maxHeight: "calc(100% - 62px)" }}
-            >
-              {selectedCartelas.map((cardId) => {
-                const cardData = bingoCards[cardId - 1];
-                const cardMarkedSet = new Set(
-                  (markedNumbers[cardId] || []).map(String),
-                );
-
-                const cardSize =
-                  totalCartelas <= 1
-                    ? {
-                        cardWidth: "w-[175px]",
-                        headerHeight: "h-6",
-                        headerText: "text-[11px]",
-                        cellText: "text-[12px]",
-                        rounded: "rounded-md",
-                        gap: "gap-[2px]",
-                        padding: "p-1.5",
-                        freeText: "text-lg",
-                      }
-                    : totalCartelas <= 2
-                      ? {
-                          cardWidth: "w-[150px]",
-                          headerHeight: "h-5",
-                          headerText: "text-[10px]",
-                          cellText: "text-[11px]",
-                          rounded: "rounded",
-                          gap: "gap-[2px]",
-                          padding: "p-1.5",
-                          freeText: "text-base",
-                        }
-                      : totalCartelas === 3
-                        ? {
-                            cardWidth: "w-[112px]",
-                            headerHeight: "h-4",
-                            headerText: "text-[9px]",
-                            cellText: "text-[9px]",
-                            rounded: "rounded",
-                            gap: "gap-[1px]",
-                            padding: "p-1",
-                            freeText: "text-sm",
-                          }
-                        : {
-                            cardWidth: "w-full",
-                            headerHeight: "h-3.5",
-                            headerText: "text-[8px]",
-                            cellText: "text-[8px]",
-                            rounded: "rounded",
-                            gap: "gap-[1px]",
-                            padding: "p-1",
-                            freeText: "text-[10px]",
-                          };
-
-                return (
-                  <div
-                    key={cardId}
-                    className={`${cardSize.cardWidth} rounded-xl grid grid-cols-5 ${cardSize.gap} ${cardSize.padding} h-fit border shadow-sm`}
-                    style={{
-                      backgroundColor: UI_COLORS.surface,
-                      borderColor: UI_COLORS.base,
-                    }}
-                  >
-                    {["B", "I", "N", "G", "O"].map((char, i) => (
-                      <div
-                        key={i}
-                        className={`${cardSize.headerHeight} flex items-center justify-center font-black ${cardSize.headerText} ${cardSize.rounded}`}
-                        style={{
-                          backgroundColor: UI_COLORS.base,
-                          color: UI_COLORS.surface,
-                        }}
-                      >
-                        {char}
-                      </div>
-                    ))}
-
-                    {cardData ? (
-                      Array.from({ length: 5 }).flatMap((_, rowIdx) =>
-                        ["B", "I", "N", "G", "O"].map((col) => {
-                          const val = cardData[col][rowIdx];
-                          const isMarked =
-                            val !== "FREE" && cardMarkedSet.has(String(val));
-                          const isCalled =
-                            val !== "FREE" && calledNumbersList.includes(val);
-
-                          return (
-                            <div
-                              key={`${col}-${rowIdx}`}
-                              onClick={() => toggleCell(val, cardId)}
-                              className={`aspect-square border ${cardSize.rounded} flex items-center justify-center ${cardSize.cellText} font-black relative cursor-pointer select-none active:scale-95 transition-transform`}
-                              style={{
-                                backgroundColor: isCalled
-                                  ? UI_COLORS.accent
-                                  : UI_COLORS.surface,
-                                borderColor: UI_COLORS.base,
-                                color: isCalled
-                                  ? UI_COLORS.surface
-                                  : UI_COLORS.base,
-                              }}
-                            >
-                              {val === "FREE" ? (
-                                <span className={`${cardSize.freeText} animate-pulse`}>
-                                  ★
-                                </span>
-                              ) : (
-                                <>
-                                  <span>{val}</span>
-                                  {isMarked && (
-                                    <div
-                                      className="absolute w-[80%] h-[80%] rounded-full border-2 animate-stamp"
-                                      style={{
-                                        borderColor: UI_COLORS.base,
-                                        backgroundColor: `${UI_COLORS.base}55`,
-                                      }}
-                                    ></div>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          );
-                        }),
-                      )
-                    ) : (
-                      <div className="col-span-5 text-center py-6">?</div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <button
-              onClick={handleBingoClick}
-              className="w-[175px] py-2.5 mt-2 rounded-full font-black text-lg shadow-lg border-2 active:scale-95 transition-transform"
+              className="rounded-xl border px-3 py-3 text-[24px] font-black leading-none"
               style={{
-                backgroundColor: UI_COLORS.accent,
-                color: UI_COLORS.surface,
-                borderColor: UI_COLORS.base,
+                backgroundColor: UI_COLORS.panelBg,
+                borderColor: UI_COLORS.tileBorder,
+                color: "#880096",
               }}
             >
-              BINGO!
-            </button>
-            </>
+              {room?.status === "playing" ? "STARTED" : "WAITING"}
+            </div>
+
+            <div
+              className="mt-2 rounded-[28px] border px-3 py-2"
+              style={{
+                background: "linear-gradient(180deg,#9d008f 0%,#76008e 100%)",
+                borderColor: UI_COLORS.tileBorder,
+                color: "#fff",
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-[22px] font-black leading-none">
+                  Current Call
+                </p>
+                <div
+                  className="h-12 min-w-12 rounded-full px-2 flex items-center justify-center text-[20px] font-black leading-none"
+                  style={{ backgroundColor: UI_COLORS.called }}
+                >
+                  {displayCurrentBall
+                    ? `${getColumnForNumber(displayCurrentBall.num) || ""}-${displayCurrentBall.num}`
+                    : "--"}
+                </div>
+              </div>
+
+              <div className="mt-2 flex justify-center gap-2">
+                {calledNumbersList.slice(-3).map((num) => {
+                  const letter = getColumnForNumber(num);
+                  return (
+                    <div
+                      key={num}
+                      className="h-10 min-w-10 rounded-full px-2 flex items-center justify-center text-[14px] font-black leading-none text-white"
+                      style={{
+                        backgroundColor: letter
+                          ? BINGO_COLORS[letter].hex
+                          : "#666",
+                      }}
+                    >
+                      {letter}-{num}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {isSpectator ? (
+              <div
+                className="mt-2 rounded-xl border p-3 min-h-[300px] flex items-center justify-center"
+                style={{
+                  backgroundColor: UI_COLORS.panelBg,
+                  borderColor: UI_COLORS.tileBorder,
+                }}
+              >
+                <p
+                  className="text-center text-[18px] font-black leading-tight"
+                  style={{ color: "#880096" }}
+                >
+                  Please wait for this
+                  <br />
+                  game to be completed
+                </p>
+              </div>
+            ) : (
+              <>
+                <div
+                  className="mt-2 rounded-xl border p-2"
+                  style={{
+                    backgroundColor: UI_COLORS.panelBg,
+                    borderColor: UI_COLORS.tileBorder,
+                  }}
+                  onPointerDown={_handlePointerDown}
+                  onPointerMove={_handlePointerMove}
+                  onPointerUp={_handlePointerEnd}
+                  onPointerCancel={_handlePointerEnd}
+                >
+                  {currentCardId ? (
+                    <>
+                      <div className="grid grid-cols-5 gap-1">
+                        {["B", "I", "N", "G", "O"].map((char) => (
+                          <div
+                            key={char}
+                            className="h-7 rounded-md flex items-center justify-center text-white text-lg font-black leading-none"
+                            style={{ backgroundColor: BINGO_COLORS[char].hex }}
+                          >
+                            {char}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-1 grid grid-cols-5 gap-1">
+                        {Array.from({ length: 5 }).flatMap((_, rowIdx) =>
+                          ["B", "I", "N", "G", "O"].map((col) => {
+                            const cardData = bingoCards[currentCardId - 1];
+                            const val = cardData?.[col]?.[rowIdx];
+                            const isMarked =
+                              val !== "FREE" &&
+                              new Set(
+                                (markedNumbers[currentCardId] || []).map(String),
+                              ).has(String(val));
+                            const isCalled =
+                              val !== "FREE" && calledNumbersList.includes(val);
+                            return (
+                              <div
+                                key={`${col}-${rowIdx}-${currentCardId}`}
+                                onClick={() => toggleCell(val, currentCardId)}
+                                className="h-10 rounded-md flex items-center justify-center text-[14px] font-black leading-none"
+                                style={{
+                                  backgroundColor:
+                                    val === "FREE"
+                                      ? UI_COLORS.marked
+                                      : isMarked
+                                        ? UI_COLORS.marked
+                                        : isCalled
+                                          ? UI_COLORS.tileBg
+                                          : UI_COLORS.tileBg,
+                                  color:
+                                    val === "FREE" || isMarked
+                                      ? "#fff"
+                                      : UI_COLORS.textDark,
+                                }}
+                              >
+                                {val === "FREE" ? "*" : val}
+                              </div>
+                            );
+                          }),
+                        )}
+                      </div>
+                      <p
+                        className="mt-2 text-center text-[20px] font-black leading-none"
+                        style={{ color: "#f4f0f7" }}
+                      >
+                        Board number {currentCardId}
+                      </p>
+                    </>
+                  ) : (
+                    <div
+                      className="rounded-lg py-8 text-center text-sm font-bold"
+                      style={{ color: UI_COLORS.textDark }}
+                    >
+                      No selected card
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleBingoClick}
+                  className="w-full mt-2 py-3 rounded-2xl font-black text-3xl leading-none active:scale-95 transition-transform"
+                  style={{ backgroundColor: UI_COLORS.called, color: "#fff" }}
+                >
+                  BINGO!
+                </button>
+              </>
             )}
           </div>
         </div>
+
+        <button
+          onClick={handleLeaveGame}
+          className="mt-3 w-full rounded-xl border py-2 text-sm font-bold"
+          style={{
+            backgroundColor: UI_COLORS.tileBg,
+            borderColor: UI_COLORS.tileBorder,
+            color: UI_COLORS.textDark,
+          }}
+        >
+          Leave Room
+        </button>
       </div>
 
       {/* --- MODALS --- */}
       {/* Winner Modal */}
       {systemWinnerData && (
         <div
-          className="absolute inset-0 z-50 flex items-center justify-center px-4 backdrop-blur-sm overflow-y-auto py-4"
-          style={{ backgroundColor: "rgba(30, 35, 48, 0.85)" }}
+          className="fixed inset-0 z-50 flex items-center justify-center px-3 py-4"
+          style={{ backgroundColor: "rgba(46, 28, 68, 0.6)" }}
         >
           <div
-            className="w-full max-w-sm rounded-3xl p-4 text-center shadow-2xl animate-stamp border-2 my-auto"
+            className="w-full max-w-[430px] max-h-[92vh] overflow-y-auto rounded-2xl p-2 text-center animate-stamp border shadow-2xl"
             style={{
-              backgroundColor: UI_COLORS.surface,
-              borderColor: UI_COLORS.base,
+              backgroundColor: UI_COLORS.pageBg,
+              borderColor: UI_COLORS.tileBorder,
             }}
           >
-            <div className="mb-4">
-              {String(systemWinnerData.winner.userId) === String(userId) ? (
-                <>
-                  <h2
-                    className="text-3xl font-black mb-2"
-                    style={{ color: UI_COLORS.base }}
-                  >
-                    YOU WON!
-                  </h2>
-                  <p
-                    className="font-bold uppercase tracking-widest text-xs"
-                    style={{ color: UI_COLORS.accent }}
-                  >
-                    Congratulations
-                  </p>
-                </>
-              ) : (
-                <>
-                  <h2
-                    className="text-3xl font-black mb-2"
-                    style={{ color: UI_COLORS.base }}
-                  >
-                    GAME OVER
-                  </h2>
-                  <p
-                    className="font-bold uppercase tracking-widest text-xs"
-                    style={{ color: UI_COLORS.accent }}
-                  >
-                    Better luck next time
-                  </p>
-                </>
-              )}
-            </div>
-
-            {/* Status */}
-            <div className="mb-4">
-              <span
-                className="inline-block px-4 py-2 rounded-full font-black text-sm border"
-                style={{
-                  backgroundColor: UI_COLORS.accent,
-                  color: UI_COLORS.surface,
-                  borderColor: UI_COLORS.base,
-                }}
-              >
-                {String(systemWinnerData.winner.userId) === String(userId)
-                  ? "WINNER"
-                  : "LOSER"}
-              </span>
-            </div>
-
             <div
-              className="rounded-2xl p-3 mb-3 border"
+              className="rounded-xl border px-2 py-3"
               style={{
-                backgroundColor: UI_COLORS.surface,
-                borderColor: UI_COLORS.accent,
+                backgroundColor: UI_COLORS.called,
+                borderColor: UI_COLORS.tileBorder,
               }}
             >
-              <div className="grid grid-cols-2 gap-3">
-                {/* Winner Name (masked) */}
-                <div>
-                  <p
-                    className="text-xs font-bold uppercase mb-1"
-                    style={{ color: UI_COLORS.accent }}
-                  >
-                    Winner
-                  </p>
-                  <p className="text-lg font-black" style={{ color: UI_COLORS.base }}>
-                    @{getMaskedWinnerName(systemWinnerData.winner.userName)}
-                  </p>
-                </div>
-
-                {/* Win Amount */}
-                <div>
-                  <p
-                    className="text-xs font-bold uppercase mb-1"
-                    style={{ color: UI_COLORS.accent }}
-                  >
-                    Win Amount
-                  </p>
-                  <p className="text-xl font-black" style={{ color: UI_COLORS.base }}>
-                    {calculatePrizeWithWinCut(systemWinnerData.prize)} Br
-                  </p>
-                </div>
-
-                {/* Winner Card Number */}
-                {systemWinnerData.winner.cartelaId && (
-                  <div>
-                    <p
-                      className="text-xs font-bold uppercase mb-1"
-                      style={{ color: UI_COLORS.accent }}
-                    >
-                      Card Number
-                    </p>
-                    <p className="text-lg font-black" style={{ color: UI_COLORS.base }}>
-                      #{systemWinnerData.winner.cartelaId}
-                    </p>
-                  </div>
-                )}
+              <h2 className="text-[22px] font-black leading-none text-white">
+                BINGO!
+              </h2>
+              <div className="mt-3 flex items-center justify-center gap-2 text-white">
+                <span
+                  className="rounded-lg px-2.5 py-1 text-[18px] font-black leading-none"
+                  style={{ backgroundColor: UI_COLORS.marked }}
+                >
+                  {getMaskedWinnerName(systemWinnerData.winner.userName)}
+                </span>
+                <span className="text-[18px] font-black leading-none">
+                  has won the game
+                </span>
               </div>
             </div>
 
             {/* Winner Card Display */}
             {systemWinnerData.winner.cartelaId && (
-              <div className="mb-4">
-                <p
-                  className="text-xs font-bold uppercase mb-1.5"
-                  style={{ color: UI_COLORS.accent }}
-                >
-                  Winning Card
-                </p>
+              <div
+                className="mt-2 rounded-xl border p-2"
+                style={{ borderColor: UI_COLORS.tileBorder }}
+              >
                 {renderWinnerCard(
                   systemWinnerData.winner.cartelaId,
                   systemWinnerData.winner.winningCells || [],
                   calledNumbersList,
                 )}
+                <p
+                  className="mt-1 text-[16px] font-black leading-none"
+                  style={{ color: "#ece4f6" }}
+                >
+                  Board number {systemWinnerData.winner.cartelaId}
+                </p>
               </div>
             )}
 
-            <button
-              onClick={handleLeaveGame}
-              className="w-full py-3 rounded-xl font-bold shadow-sm active:scale-95 transition-all border"
+            <div
+              className="mt-2 w-full py-3 rounded-xl font-black text-[32px] leading-none border"
               style={{
-                backgroundColor: UI_COLORS.base,
-                color: UI_COLORS.surface,
-                borderColor: UI_COLORS.accent,
+                backgroundColor: UI_COLORS.called,
+                color: "white",
+                borderColor: UI_COLORS.tileBorder,
               }}
             >
-              Play Again
-            </button>
+              {winnerCountdown}
+            </div>
           </div>
         </div>
       )}

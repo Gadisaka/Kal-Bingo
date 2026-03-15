@@ -3,7 +3,7 @@ import crypto from "crypto";
 import AuthSession from "../model/authSession.js";
 import User from "../model/user.js";
 import Settings from "../model/settings.js";
-import { parseReferralCode, applyReferral } from "../utils/referral.js";
+import { applyReferral, generateReferralLinks } from "../utils/referral.js";
 
 const TELEGRAM_API = "https://api.telegram.org/bot";
 
@@ -28,7 +28,7 @@ export const sendBotMessage = async (chatId, text, options = {}) => {
   try {
     console.log(
       `📤 Sending message to chat ${chatId}:`,
-      text.substring(0, 50) + "..."
+      text.substring(0, 50) + "...",
     );
     const response = await axios.post(`${TELEGRAM_API}${token}/sendMessage`, {
       chat_id: chatId,
@@ -41,12 +41,12 @@ export const sendBotMessage = async (chatId, text, options = {}) => {
   } catch (error) {
     console.error(
       "❌ Error sending bot message:",
-      error.response?.data || error.message
+      error.response?.data || error.message,
     );
     if (error.response?.data) {
       console.error(
         "Full error response:",
-        JSON.stringify(error.response.data, null, 2)
+        JSON.stringify(error.response.data, null, 2),
       );
     }
     return null;
@@ -78,7 +78,7 @@ export const handleCallbackQuery = async (callbackQuery) => {
     await AuthSession.findOneAndUpdate({ authCode }, { status: "expired" });
     await sendBotMessage(
       chatId,
-      "❌ Authorization cancelled. You can try again anytime."
+      "❌ Authorization cancelled. You can try again anytime.",
     );
     return;
   }
@@ -94,7 +94,7 @@ export const handleCallbackQuery = async (callbackQuery) => {
     if (!session) {
       await sendBotMessage(
         chatId,
-        "❌ This authorization request has expired. Please try logging in again."
+        "❌ This authorization request has expired. Please try logging in again.",
       );
       return;
     }
@@ -116,7 +116,7 @@ export const handleCallbackQuery = async (callbackQuery) => {
     await session.save();
 
     console.log(
-      `📱 Phone number: ${finalPhoneNumber || "Not available - will ask user"}`
+      `📱 Phone number: ${finalPhoneNumber || "Not available - will ask user"}`,
     );
 
     // Get frontend URL for mini app button
@@ -146,7 +146,7 @@ export const handleCallbackQuery = async (callbackQuery) => {
     await sendBotMessage(
       chatId,
       "✅ <b>Authorization successful!</b>\n\nYou can now return to the website. You should be logged in automatically.",
-      { reply_markup: keyboard }
+      { reply_markup: keyboard },
     );
 
     return session;
@@ -163,7 +163,7 @@ export const handleStartCommand = async (message) => {
     const text = message.text || "";
 
     console.log(
-      `🔍 Processing /start command from user ${telegramId}, text: "${text}"`
+      `🔍 Processing /start command from user ${telegramId}, text: "${text}"`,
     );
 
     // Check if /start command has a parameter: /start <param>
@@ -191,8 +191,7 @@ export const handleStartCommand = async (message) => {
 
       await sendBotMessage(
         chatId,
-        "👋 Welcome to <b>Sheqay Games</b>!\n\n🎯 Play Games and win prizes!\n\nClick the button below to start playing:",
-        { reply_markup: keyboard }
+        "👋 Welcome to <b>Kal Bingo</b>!\n\n🎯 Play Bingo and win prizes!\n",
       );
       return;
     }
@@ -211,7 +210,7 @@ export const handleStartCommand = async (message) => {
       if (existingUser) {
         // User already registered - just redirect to Mini App
         console.log(
-          `✅ User ${telegramId} already exists, redirecting to Mini App`
+          `✅ User ${telegramId} already exists, redirecting to Mini App`,
         );
 
         const keyboard = {
@@ -228,14 +227,13 @@ export const handleStartCommand = async (message) => {
         await sendBotMessage(
           chatId,
           "✅ <b>You're already registered!</b>\n\n🎮 Click below to play:",
-          { reply_markup: keyboard }
         );
         return;
       }
 
       // New user - create registration session with referral code
       console.log(
-        `📝 Creating referral registration session for user ${telegramId}`
+        `📝 Creating referral registration session for user ${telegramId}`,
       );
       const registrationCode = crypto.randomBytes(16).toString("hex");
 
@@ -259,7 +257,7 @@ export const handleStartCommand = async (message) => {
       });
       await regSession.save();
       console.log(
-        `✅ Referral registration session created: ${registrationCode}`
+        `✅ Referral registration session created: ${registrationCode}`,
       );
 
       // Request phone number
@@ -278,8 +276,8 @@ export const handleStartCommand = async (message) => {
 
       await sendBotMessage(
         chatId,
-        `🎁 <b>You've been invited!</b>\n\n👋 Welcome to <b>Sheqay Games</b>!\n\n📱 To complete your registration and claim your invite bonus, please share your phone number:`,
-        { reply_markup: contactKeyboard }
+        `🎁 <b>You've been invited!</b>\n\n👋 Welcome to <b>Kal Bingo</b>!\n\n📱 To complete your registration and claim your invite bonus, please share your phone number:`,
+        { reply_markup: contactKeyboard },
       );
       return;
     }
@@ -302,7 +300,7 @@ export const handleStartCommand = async (message) => {
       const expiredSession = await AuthSession.findOne({ authCode });
       if (expiredSession) {
         console.log(
-          `⚠️ Session exists but expired or already used. Status: ${expiredSession.status}`
+          `⚠️ Session exists but expired or already used. Status: ${expiredSession.status}`,
         );
       }
 
@@ -328,13 +326,13 @@ export const handleStartCommand = async (message) => {
       await sendBotMessage(
         chatId,
         "⚠️ This link has expired or is invalid.\n\nClick the button below to open the game:",
-        { reply_markup: keyboard }
+        { reply_markup: keyboard },
       );
       return;
     }
 
     console.log(
-      `✅ Session found! Status: ${session.status}, Expires: ${session.expiresAt}`
+      `✅ Session found! Status: ${session.status}, Expires: ${session.expiresAt}`,
     );
 
     // Check if user already exists
@@ -374,7 +372,7 @@ export const handleStartCommand = async (message) => {
       await sendBotMessage(
         chatId,
         `👋 Welcome to <b>Sheqela Games</b>!\n\nTo complete your registration, please share your phone number by clicking the button below.`,
-        { reply_markup: contactKeyboard }
+        { reply_markup: contactKeyboard },
       );
       return;
     }
@@ -427,24 +425,30 @@ const handlePlayCommand = async (message) => {
     const settings = await Settings.getSettings();
     const stakes = settings.systemGames?.gameStakes || [10, 20, 50, 100];
 
-    const buttons = stakes.map((stake) => ([{
-      text: `🎮 ${stake} Birr Game`,
-      web_app: { url: `${frontendUrl}?autoJoin=${stake}` },
-    }]));
+    const buttons = stakes.map((stake) => [
+      {
+        text: `🎮 ${stake} Birr Game`,
+        web_app: { url: `${frontendUrl}?autoJoin=${stake}` },
+      },
+    ]);
 
     const keyboard = { inline_keyboard: buttons };
 
     await sendBotMessage(
       chatId,
       "🎯 <b>Choose a Game</b>\n\nPick a stake to join the next available game:",
-      { reply_markup: keyboard }
+      { reply_markup: keyboard },
     );
   } catch (err) {
     console.error("[/play] Error:", err.message);
     const keyboard = {
-      inline_keyboard: [[{ text: "🎮 Open Game", web_app: { url: frontendUrl } }]],
+      inline_keyboard: [
+        [{ text: "🎮 Open Game", web_app: { url: frontendUrl } }],
+      ],
     };
-    await sendBotMessage(chatId, "🎮 Click below to play:", { reply_markup: keyboard });
+    await sendBotMessage(chatId, "🎮 Click below to play:", {
+      reply_markup: keyboard,
+    });
   }
 };
 
@@ -456,16 +460,20 @@ const handleDepositCommand = async (message) => {
   const frontendUrl = process.env.FRONTEND_URL || "https://sheqaygames.com";
 
   const keyboard = {
-    inline_keyboard: [[{
-      text: "💰 Open Wallet & Deposit",
-      web_app: { url: `${frontendUrl}?action=deposit` },
-    }]],
+    inline_keyboard: [
+      [
+        {
+          text: "💰 Open Wallet & Deposit",
+          web_app: { url: `${frontendUrl}?action=deposit` },
+        },
+      ],
+    ],
   };
 
   await sendBotMessage(
     chatId,
     "💰 <b>Deposit Funds</b>\n\nClick the button below to open your wallet and make a deposit:",
-    { reply_markup: keyboard }
+    { reply_markup: keyboard },
   );
 };
 
@@ -477,16 +485,20 @@ const handleWithdrawCommand = async (message) => {
   const frontendUrl = process.env.FRONTEND_URL || "https://sheqaygames.com";
 
   const keyboard = {
-    inline_keyboard: [[{
-      text: "💸 Open Wallet & Withdraw",
-      web_app: { url: `${frontendUrl}?action=withdraw` },
-    }]],
+    inline_keyboard: [
+      [
+        {
+          text: "💸 Open Wallet & Withdraw",
+          web_app: { url: `${frontendUrl}?action=withdraw` },
+        },
+      ],
+    ],
   };
 
   await sendBotMessage(
     chatId,
     "💸 <b>Withdraw Funds</b>\n\nClick the button below to open your wallet and request a withdrawal:",
-    { reply_markup: keyboard }
+    { reply_markup: keyboard },
   );
 };
 
@@ -499,10 +511,73 @@ const handleSupportCommand = async (message) => {
   await sendBotMessage(
     chatId,
     "🆘 <b>Support</b>\n\n" +
-    "Need help? Contact our support team:\n\n" +
-    "📩 Send us a message describing your issue and we'll get back to you as soon as possible.\n\n" +
-    "⏰ Support hours: 24/7"
+      "Need help? Contact our support team:\n\n" +
+      "📩 Send us a message describing your issue and we'll get back to you as soon as possible.\n\n" +
+      "⏰ Support hours: 24/7",
   );
+};
+
+/**
+ * Handle /invite command - return user's referral link with share button
+ */
+const handleInviteCommand = async (message) => {
+  const chatId = message.chat.id;
+  const telegramId = String(message.from.id);
+  const frontendUrl = process.env.FRONTEND_URL || "https://sheqaygames.com";
+
+  try {
+    const user = await User.findOne({ telegramId, isActive: true });
+
+    if (!user) {
+      const keyboard = {
+        inline_keyboard: [
+          [
+            {
+              text: "🎮 Open Game",
+              web_app: { url: frontendUrl },
+            },
+          ],
+        ],
+      };
+
+      await sendBotMessage(
+        chatId,
+        "⚠️ You need an account before you can invite friends.\n\nOpen the game first to create your account.",
+        { reply_markup: keyboard },
+      );
+      return;
+    }
+
+    const links = generateReferralLinks(user);
+    const encodedLink = encodeURIComponent(links.referralLink);
+    const shareText = encodeURIComponent(
+      "Join me on Kal Bingo and claim your invite bonus!",
+    );
+    const telegramShareUrl = `https://t.me/share/url?url=${encodedLink}&text=${shareText}`;
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: "📤 Share Referral Link",
+            url: telegramShareUrl,
+          },
+        ],
+      ],
+    };
+
+    await sendBotMessage(
+      chatId,
+      `Here is your referral link\n\n${links.referralLink}`,
+      { reply_markup: keyboard },
+    );
+  } catch (err) {
+    console.error("[/invite] Error:", err.message);
+    await sendBotMessage(
+      chatId,
+      "❌ Could not generate your referral link right now. Please try again in a moment.",
+    );
+  }
 };
 
 /**
@@ -557,7 +632,7 @@ export const processBotUpdate = async (update) => {
               await sendBotMessage(
                 update.message.chat.id,
                 "❌ This phone number is already linked to another account.",
-                { reply_markup: { remove_keyboard: true } }
+                { reply_markup: { remove_keyboard: true } },
               );
               // Mark session as expired
               referralSession.status = "expired";
@@ -576,7 +651,7 @@ export const processBotUpdate = async (update) => {
             await sendBotMessage(
               update.message.chat.id,
               "✅ Account linked successfully!",
-              { reply_markup: { remove_keyboard: true } }
+              { reply_markup: { remove_keyboard: true } },
             );
           } else {
             // Create new user with referral
@@ -603,7 +678,7 @@ export const processBotUpdate = async (update) => {
               const result = await applyReferral(user, referralCode);
               if (result.success) {
                 console.log(
-                  `🎁 Referral applied successfully: ${referralCode}`
+                  `🎁 Referral applied successfully: ${referralCode}`,
                 );
               } else {
                 console.log(`⚠️ Referral not applied: ${result.error}`);
@@ -613,7 +688,7 @@ export const processBotUpdate = async (update) => {
             await sendBotMessage(
               update.message.chat.id,
               "✅ <b>Registration successful!</b>",
-              { reply_markup: { remove_keyboard: true } }
+              { reply_markup: { remove_keyboard: true } },
             );
           }
 
@@ -637,7 +712,7 @@ export const processBotUpdate = async (update) => {
           await sendBotMessage(
             update.message.chat.id,
             "🎮 <b>Ready to play!</b>\n\nClick the button below to start:",
-            { reply_markup: keyboard }
+            { reply_markup: keyboard },
           );
 
           return;
@@ -658,14 +733,14 @@ export const processBotUpdate = async (update) => {
           };
           await session.save();
           console.log(
-            `✅ Phone number ${contact.phone_number} saved to session`
+            `✅ Phone number ${contact.phone_number} saved to session`,
           );
 
           // Remove the contact keyboard
           await sendBotMessage(
             update.message.chat.id,
             "✅ Phone number received!",
-            { reply_markup: { remove_keyboard: true } }
+            { reply_markup: { remove_keyboard: true } },
           );
 
           // Now show authorization message
@@ -704,7 +779,7 @@ export const processBotUpdate = async (update) => {
           await sendBotMessage(
             update.message.chat.id,
             "❌ No active session found. Please try again.",
-            { reply_markup: { remove_keyboard: true } }
+            { reply_markup: { remove_keyboard: true } },
           );
         }
         return;
@@ -734,6 +809,11 @@ export const processBotUpdate = async (update) => {
       if (text.startsWith("/support")) {
         console.log("🆘 Processing /support command");
         await handleSupportCommand(update.message);
+        return;
+      }
+      if (text.startsWith("/invite")) {
+        console.log("🎁 Processing /invite command");
+        await handleInviteCommand(update.message);
         return;
       }
 
@@ -794,7 +874,7 @@ export const sendMiniAppBotMessage = async (chatId, text, options = {}) => {
   try {
     console.log(
       `📤 [Mini App Bot] Sending message to chat ${chatId}:`,
-      text.substring(0, 50) + "..."
+      text.substring(0, 50) + "...",
     );
     const response = await axios.post(`${TELEGRAM_API}${token}/sendMessage`, {
       chat_id: chatId,
@@ -807,7 +887,7 @@ export const sendMiniAppBotMessage = async (chatId, text, options = {}) => {
   } catch (error) {
     console.error(
       "❌ [Mini App Bot] Error sending message:",
-      error.response?.data || error.message
+      error.response?.data || error.message,
     );
     return null;
   }
@@ -823,7 +903,7 @@ export const handleMiniAppBotStartCommand = async (message) => {
     const text = message.text || "";
 
     console.log(
-      `🔍 [Mini App Bot] Processing /start command from user ${telegramId}, text: "${text}"`
+      `🔍 [Mini App Bot] Processing /start command from user ${telegramId}, text: "${text}"`,
     );
 
     // Get the Mini App URL
@@ -857,8 +937,8 @@ export const handleMiniAppBotStartCommand = async (message) => {
 
         await sendMiniAppBotMessage(
           chatId,
-          "🎁 <b>You've been invited to play!</b>\n\n🎯 Your friend invited you to join Sheqay Games!\n\n✨ Click the button below to start playing and claim your invite bonus:",
-          { reply_markup: keyboard }
+          "🎁 <b>You've been invited to play!</b>\n\n🎯 Your friend invited you to join Kal Bingo!\n\n✨ Click the button below to start playing and claim your invite bonus:",
+          { reply_markup: keyboard },
         );
         return;
       }
@@ -869,7 +949,7 @@ export const handleMiniAppBotStartCommand = async (message) => {
       inline_keyboard: [
         [
           {
-            text: "🎮 Play Sheqay Games",
+            text: "🎮 Play Kal Bingo",
             web_app: { url: frontendUrl },
           },
         ],
@@ -878,8 +958,7 @@ export const handleMiniAppBotStartCommand = async (message) => {
 
     await sendMiniAppBotMessage(
       chatId,
-      "👋 <b>Welcome to Sheqay Games!</b>\n\n🎯 Play exciting games and win prizes!\n\nClick the button below to start:",
-      { reply_markup: keyboard }
+      "👋 <b>Welcome to Kal Bingo!</b>\n\n🎯 Play Bingo and win prizes!\n",
     );
   } catch (error) {
     console.error("❌ [Mini App Bot] Error in handleStartCommand:", error);
@@ -894,7 +973,9 @@ export const handleMiniAppBotStartCommand = async (message) => {
 export const registerBotCommands = async () => {
   const token = getAuthBotToken();
   if (!token) {
-    console.error("[bot-commands] AUTH_BOT_TOKEN not configured, skipping command registration");
+    console.error(
+      "[bot-commands] AUTH_BOT_TOKEN not configured, skipping command registration",
+    );
     return;
   }
 
@@ -902,6 +983,7 @@ export const registerBotCommands = async () => {
     { command: "play", description: "Join a bingo game" },
     { command: "deposit", description: "Deposit funds to your wallet" },
     { command: "withdraw", description: "Withdraw funds from your wallet" },
+    { command: "invite", description: "Get your referral link" },
     { command: "support", description: "Get help and support" },
     { command: "start", description: "Start the bot" },
   ];
@@ -910,7 +992,10 @@ export const registerBotCommands = async () => {
     await axios.post(`${TELEGRAM_API}${token}/setMyCommands`, { commands });
     console.log("✅ [bot-commands] Registered bot commands with Telegram");
   } catch (err) {
-    console.error("[bot-commands] Failed to register commands:", err.response?.data || err.message);
+    console.error(
+      "[bot-commands] Failed to register commands:",
+      err.response?.data || err.message,
+    );
   }
 };
 
@@ -923,7 +1008,7 @@ export const processMiniAppBotUpdate = async (update) => {
     const token = getMiniAppBotToken();
     if (!token) {
       console.error(
-        "❌ [Mini App Bot] TELEGRAM_BOT_TOKEN not configured - cannot process updates"
+        "❌ [Mini App Bot] TELEGRAM_BOT_TOKEN not configured - cannot process updates",
       );
       return;
     }
@@ -950,7 +1035,7 @@ export const processMiniAppBotUpdate = async (update) => {
         inline_keyboard: [
           [
             {
-              text: "🎮 Play Sheqay Games",
+              text: "🎮 Play Kal Bingo",
               web_app: { url: frontendUrl },
             },
           ],
@@ -960,7 +1045,7 @@ export const processMiniAppBotUpdate = async (update) => {
       await sendMiniAppBotMessage(
         update.message.chat.id,
         "🎮 Click the button below to play!",
-        { reply_markup: keyboard }
+        { reply_markup: keyboard },
       );
       return;
     }

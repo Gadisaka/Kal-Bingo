@@ -1,46 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import axios from "axios";
 import { socketClient } from "../sockets/socket";
 // import ConnectionStatus from "../components/ConnectionStatus";
 import { useAuth } from "../context/AuthContext";
 import { bingoCards } from "../libs/BingoCards";
-import {
-  Star as StarIcon,
-  Users,
-  Timer as TimerIcon,
-  Coins,
-  Trophy,
-  ArrowLeftCircle,
-} from "lucide-react";
-import WalletBadge from "../components/WalletBadge";
+import { API_URL } from "../constant";
 
 const UI_COLORS = {
-  base: "#1E2330",
-  surface: "#F2F2EC",
-  accent: "#3A7A45",
+  pageBg: "#b998cf",
+  panelBg: "#c8aad8",
+  cardBg: "#cfb5df",
+  tileBg: "#ffffff",
+  tileBorder: "#e5e0ee",
+  availableCard: "#f2d8ec",
+  selectedCard: "#ff7900",
+  textDark: "#342146",
 };
 
 export default function WaitingRoom() {
   const { gameRoomId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const backgroundStars = useMemo(() => {
-    return Array.from({ length: 50 }, (_, i) => ({
-      id: i,
-      left: Math.random() * 100,
-      top: Math.random() * 100,
-      size: Math.random() * 4 + 2,
-      opacity: Math.random() * 0.4 + 0.2,
-      duration: 3 + Math.random() * 4,
-      delay: Math.random() * 2,
-    }));
-  }, []);
   const socket = useMemo(() => socketClient.instance, []);
   const [room, setRoom] = useState(null);
   const [secondsLeft, setSecondsLeft] = useState(null);
   const [selectedCartelas, setSelectedCartelas] = useState([]);
-  const [currentCartelaIndex, setCurrentCartelaIndex] = useState(0);
-  const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
   const intervalRef = useRef();
   const roomRef = useRef();
   const [hasReceivedUpdate, setHasReceivedUpdate] = useState(false);
@@ -53,16 +38,7 @@ export default function WaitingRoom() {
   const backNavigationRef = useRef(false);
   const [winCutPercent, setWinCutPercent] = useState(10);
   const winCutPercentRef = useRef(10);
-
-  // Automatically rotate current player display
-  useEffect(() => {
-    if (!room?.joinedPlayers?.length) return;
-    const total = room.joinedPlayers.length;
-    const id = setInterval(() => {
-      setCurrentPlayerIndex((prev) => (prev + 1) % total);
-    }, 2000);
-    return () => clearInterval(id);
-  }, [room?.joinedPlayers?.length]);
+  const [walletBalance, setWalletBalance] = useState(0);
   //  Prize
 
   // Handle cartela selection events
@@ -244,7 +220,7 @@ export default function WaitingRoom() {
       }
     };
 
-    const handleGameStart = ({ roomId }) => {
+    const handleGameStart = ({ roomId, spectatorUserIds = [] }) => {
       console.log(
         `🎮 Received game:start event for room ${roomId}, current room: ${gameRoomId}`,
       );
@@ -260,8 +236,17 @@ export default function WaitingRoom() {
           0,
           gameStake * totalCartelas * (1 - currentWinCut / 100),
         );
+        const currentUserId = String(user?.id ?? "");
+        const hasSelectedCartela = Object.values(currentTakenCartelas).some(
+          (cartela) => String(cartela?.userId) === currentUserId,
+        );
+        const isSpectatorFromEvent = spectatorUserIds
+          .map((id) => String(id))
+          .includes(currentUserId);
+        const isSpectator = isSpectatorFromEvent || !hasSelectedCartela;
         navigate(`/playing/${roomId}`, {
           state: {
+            isSpectator,
             roomType: "system",
             stake: gameStake,
             playerCount: currentRoom?.joinedPlayers?.length ?? 0,
@@ -343,7 +328,6 @@ export default function WaitingRoom() {
           Math.ceil((currentRoom.expiresAt - Date.now()) / 1000),
         );
         setSecondsLeft(seconds);
-
       }, 1000);
       return () => clearInterval(intervalRef.current);
     } else {
@@ -396,6 +380,30 @@ export default function WaitingRoom() {
     };
     fetchSystemSettings();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchWalletBalance = async () => {
+      if (!user) return;
+      try {
+        const res = await axios.get(`${API_URL}/api/wallet/me`);
+        if (!cancelled) {
+          const total =
+            Number(res.data?.balance || 0) + Number(res.data?.bonus || 0);
+          setWalletBalance(total);
+        }
+      } catch {
+        if (!cancelled) {
+          setWalletBalance(Number(user?.balance || 0));
+        }
+      }
+    };
+
+    fetchWalletBalance();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   useEffect(() => {
     // Debug logs to help diagnose join/redirect issue
@@ -452,8 +460,13 @@ export default function WaitingRoom() {
         0,
         gameStake * totalCartelas * (1 - currentWinCut / 100),
       );
+      const currentUserId = String(user?.id ?? "");
+      const hasSelectedCartela = Object.values(currentTakenCartelas).some(
+        (cartela) => String(cartela?.userId) === currentUserId,
+      );
       navigate(`/playing/${room.id}`, {
         state: {
+          isSpectator: !hasSelectedCartela,
           roomType: "system",
           stake: gameStake,
           playerCount: room?.joinedPlayers?.length ?? 0,
@@ -490,20 +503,6 @@ export default function WaitingRoom() {
   };
 
   const stake = room?.betAmount ?? 0;
-  const selectedCount = Object.keys(takenCartelas || {}).length;
-  const pot = stake * selectedCount;
-  const displayPrize = Math.max(
-    0,
-    pot - (pot * Math.max(0, Number(winCutPercent) || 0)) / 100,
-  );
-  const currentSelectedCartela = selectedCartelas[currentCartelaIndex];
-  const selectedCard = bingoCards.find(
-    (card) => card.id === currentSelectedCartela,
-  );
-
-  const currentPlayer = room?.joinedPlayers?.[currentPlayerIndex];
-
-  // Removed next/prev player navigation as per design update
 
   const toggleCartelaSelection = (num) => {
     if (!socket || !user) {
@@ -555,15 +554,6 @@ export default function WaitingRoom() {
       // Update local state optimistically
       setSelectedCartelas((prev) => {
         const newCartelas = prev.filter((n) => n !== num);
-        // Adjust current index if needed
-        if (
-          currentCartelaIndex >= newCartelas.length &&
-          newCartelas.length > 0
-        ) {
-          setCurrentCartelaIndex(newCartelas.length - 1);
-        } else if (newCartelas.length === 0) {
-          setCurrentCartelaIndex(0);
-        }
         console.log("After deselect, selectedCartelas:", newCartelas);
         return newCartelas;
       });
@@ -602,422 +592,244 @@ export default function WaitingRoom() {
     }
   };
 
-  const nextCartela = () => {
-    if (selectedCartelas.length) {
-      setCurrentCartelaIndex((prev) => (prev + 1) % selectedCartelas.length);
-    }
-  };
-
-  const prevCartela = () => {
-    if (selectedCartelas.length) {
-      setCurrentCartelaIndex((prev) =>
-        prev === 0 ? selectedCartelas.length - 1 : prev - 1,
-      );
-    }
-  };
-  // Prize
-  const maskPlayerName = (value) => {
-    const s = String(value ?? "");
-    if (!s) return "***";
-    if (s.length <= 3) return `${s[0]}***`;
-    return `${s[0]}***${s.slice(-2)}`;
-  };
-
   return (
     <div
-      className="relative min-h-screen overflow-hidden"
-      style={{ backgroundColor: UI_COLORS.base, color: UI_COLORS.surface }}
+      className="min-h-screen px-2 pt-2 pb-4"
+      style={{ backgroundColor: UI_COLORS.pageBg }}
     >
-      <WalletBadge />
-      <div className="absolute inset-0 pointer-events-none">
-        {backgroundStars.map((star) => (
-          <StarIcon
-            key={star.id}
-            className="absolute"
+      <div className="mx-auto w-full max-w-md">
+        <div className="grid grid-cols-4 gap-2">
+          <div
+            className="rounded-2xl border px-2 py-2 text-center"
             style={{
-              left: `${star.left}%`,
-              top: `${star.top}%`,
-              width: `${star.size}px`,
-              height: `${star.size}px`,
-              opacity: star.opacity,
-              color: UI_COLORS.accent,
-              animation: `twinkle ${star.duration}s ease-in-out infinite`,
-              animationDelay: `${star.delay}s`,
-            }}
-          />
-        ))}
-      </div>
-
-      <div className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 py-10 space-y-8">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="mt-4 text-3xl sm:text-4xl font-black tracking-tight">
-              Waiting
-            </h1>
-            <p
-              className="text-sm sm:text-base mt-1"
-              style={{ color: UI_COLORS.surface }}
-            >
-              Room <span className="font-semibold">{gameRoomId}</span>
-            </p>
-          </div>
-          <button
-            onClick={leaveRoom}
-            className="inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-xs sm:text-sm font-black transition-all duration-300 hover:scale-105 border h-fit mt-4 shrink-0"
-            style={{
-              backgroundColor: UI_COLORS.base,
-              color: UI_COLORS.surface,
-              borderColor: UI_COLORS.accent,
+              backgroundColor: UI_COLORS.tileBg,
+              borderColor: UI_COLORS.tileBorder,
             }}
           >
-            <ArrowLeftCircle className="h-4 w-4" /> Leave
-          </button>
+            <p
+              className="text-4xl font-black leading-none"
+              style={{ color: UI_COLORS.selectedCard }}
+            >
+              {room?.status === "waiting" && room?.expiresAt
+                ? (secondsLeft ?? 0)
+                : "--"}
+            </p>
+          </div>
+
+          <div
+            className="rounded-2xl border px-2 py-2 text-center"
+            style={{
+              backgroundColor: UI_COLORS.tileBg,
+              borderColor: UI_COLORS.tileBorder,
+              color: UI_COLORS.textDark,
+            }}
+          >
+            <p className="text-xs font-bold">Wallet</p>
+            <p className="mt-1 text-xl font-black leading-none">
+              {Math.trunc(Number(walletBalance || 0)).toLocaleString()}
+            </p>
+          </div>
+
+          <div
+            className="rounded-2xl border px-2 py-2 text-center"
+            style={{
+              backgroundColor: UI_COLORS.tileBg,
+              borderColor: UI_COLORS.tileBorder,
+              color: UI_COLORS.textDark,
+            }}
+          >
+            <p className="text-xs font-bold">Stake</p>
+            <p className="mt-1 text-xl font-black leading-none">{stake}</p>
+          </div>
+
+          <div
+            className="rounded-2xl border px-2 py-2 text-center"
+            style={{
+              backgroundColor: UI_COLORS.tileBg,
+              borderColor: UI_COLORS.tileBorder,
+              color: UI_COLORS.textDark,
+            }}
+          >
+            <p className="text-xs font-bold">Game N&deg;</p>
+            <p className="mt-1 text-lg font-black leading-none">1 of 1</p>
+          </div>
         </div>
 
         {selectionError && (
           <div
-            className="rounded-2xl border px-4 py-3 text-sm sm:text-base"
+            className="mt-2 rounded-xl border px-3 py-2 text-xs"
             style={{
-              borderColor: UI_COLORS.accent,
-              backgroundColor: UI_COLORS.surface,
-              color: UI_COLORS.base,
+              backgroundColor: UI_COLORS.tileBg,
+              borderColor: UI_COLORS.tileBorder,
+              color: UI_COLORS.textDark,
             }}
           >
             {selectionError}
           </div>
         )}
 
-        <div className="w-full max-w-3xl mx-auto flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div
-              className="rounded-2xl border px-3 py-2.5 shadow-lg"
-              style={{
-                borderColor: UI_COLORS.accent,
-                backgroundColor: UI_COLORS.surface,
-              }}
-            >
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p
-                    className="text-[10px] uppercase tracking-widest font-black"
-                    style={{ color: UI_COLORS.base }}
-                  >
-                    Prize
-                  </p>
-                  <p
-                    className="mt-1 text-2xl font-black"
-                    style={{ color: UI_COLORS.base }}
-                  >
-                    ${displayPrize}
-                  </p>
-                </div>
-                <div
-                  className="rounded-xl p-2.5"
-                  style={{ backgroundColor: UI_COLORS.accent }}
-                >
-                  <Trophy className="h-5 w-5 text-[#F2F2EC]" />
-                </div>
-              </div>
-            </div>
-            <div
-              className="rounded-2xl border px-3 py-2.5 shadow-lg"
-              style={{
-                borderColor: UI_COLORS.accent,
-                backgroundColor: UI_COLORS.surface,
-              }}
-            >
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p
-                    className="text-[10px] uppercase tracking-widest font-black"
-                    style={{ color: UI_COLORS.base }}
-                  >
-                    Timer
-                  </p>
-                  <p
-                    className="mt-1 text-2xl font-black"
-                    style={{ color: UI_COLORS.base }}
-                  >
-                    {room?.status === "waiting" && room?.expiresAt
-                      ? `${secondsLeft ?? "-"}s`
-                      : "--"}
-                  </p>
-                </div>
-                <div
-                  className="rounded-xl p-2.5"
-                  style={{ backgroundColor: UI_COLORS.base }}
-                >
-                  <TimerIcon className="h-5 w-5 text-[#F2F2EC]" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className="rounded-2xl border px-3 py-2.5 shadow-lg"
-            style={{
-              borderColor: UI_COLORS.accent,
-              backgroundColor: UI_COLORS.surface,
-            }}
-          >
-            <div className="flex items-center justify-between gap-4">
-              <p
-                className="text-[10px] uppercase tracking-widest font-black"
-                style={{ color: UI_COLORS.base }}
-              >
-                Players
-              </p>
-              <div
-                className="rounded-xl p-2.5"
-                style={{ backgroundColor: UI_COLORS.accent }}
-              >
-                <Users className="h-5 w-5 text-[#F2F2EC]" />
-              </div>
-            </div>
-            <div
-              className="mt-2.5 flex items-center justify-center rounded-xl border px-3 py-2"
-              style={{
-                borderColor: UI_COLORS.accent,
-                backgroundColor: UI_COLORS.base,
-              }}
-            >
-              <div className="flex-1 px-2 text-center text-sm sm:text-base">
-                {currentPlayer ? (
-                  <div className="flex flex-col items-center">
-                    <span className="text-[10px] font-bold text-[#F2F2EC]">Player</span>
-                    <span className="mt-0.5 text-lg font-black text-[#F2F2EC]">
-                      {maskPlayerName(
-                        currentPlayer.username ?? currentPlayer.userId,
-                      )}
-                    </span>
-                  </div>
-                ) : (
-                  <span className="font-bold text-[#F2F2EC]">No players</span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
         {showCountdownWarning && selectedCartelas.length === 0 && (
           <p
-            className="mt-3 rounded-xl border px-3 py-2 text-xs"
+            className="mt-2 rounded-xl border px-3 py-2 text-xs"
             style={{
-              borderColor: UI_COLORS.accent,
-              backgroundColor: UI_COLORS.surface,
-              color: UI_COLORS.base,
+              backgroundColor: UI_COLORS.tileBg,
+              borderColor: UI_COLORS.tileBorder,
+              color: UI_COLORS.textDark,
             }}
           >
-            Pick one card or auto-pick starts.
+            Pick a card now, or you will watch as spectator.
           </p>
         )}
 
         <div
-          className="rounded-3xl border p-5 space-y-5"
+          className="mt-2 rounded-2xl border p-2"
           style={{
-            borderColor: UI_COLORS.accent,
-            backgroundColor: UI_COLORS.surface,
+            backgroundColor: UI_COLORS.panelBg,
+            borderColor: UI_COLORS.tileBorder,
           }}
         >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg sm:text-xl font-semibold"></h2>
-              Pick cards
-              <p className="text-sm" style={{ color: UI_COLORS.base }}>
-                {isSelectionLocked
-                  ? "Locked - auto-picked"
-                  : "Tap to select or remove"}
-              </p>
-            </div>
-            <div
-              className="flex items-center gap-2 rounded-full border px-4 py-2 text-sm"
-              style={{
-                borderColor: UI_COLORS.accent,
-                backgroundColor: UI_COLORS.base,
-                color: UI_COLORS.surface,
-              }}
-            >
-              <span className="font-semibold">{selectedCartelas.length}</span>
-              selected
-            </div>
-          </div>
-
           <div
-            className="rounded-2xl border p-4 h-72 sm:h-80 overflow-y-auto"
+            className="rounded-xl border p-2"
             style={{
-              borderColor: UI_COLORS.accent,
-              backgroundColor: UI_COLORS.base,
+              backgroundColor: UI_COLORS.cardBg,
+              borderColor: UI_COLORS.tileBorder,
             }}
           >
-            <div className="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-15 gap-2">
-              {Array.from({ length: 150 }, (_, i) => i + 1).map((num) => {
-                const isSelected = selectedCartelas.includes(num);
-                const userId = user?.id;
-                const isTakenByOther =
-                  takenCartelas[num] && takenCartelas[num].userId !== userId;
-                const isTakenByMe =
-                  takenCartelas[num] && takenCartelas[num].userId === userId;
+            <div className="max-h-[430px] overflow-y-auto pr-1">
+              <div className="grid grid-cols-9 gap-2">
+                {Array.from({ length: 400 }, (_, i) => i + 1).map((num) => {
+                  const isSelected = selectedCartelas.includes(num);
+                  const userId = user?.id;
+                  const isTakenByOther =
+                    takenCartelas[num] && takenCartelas[num].userId !== userId;
+                  const isTakenByMe =
+                    takenCartelas[num] && takenCartelas[num].userId === userId;
 
-                return (
-                  <button
-                    key={num}
-                    onClick={() => toggleCartelaSelection(num)}
-                    disabled={isTakenByOther || isSelectionLocked}
-                    title={
-                      isSelectionLocked
-                        ? "Selection is locked"
-                        : isTakenByOther
-                          ? `Selected by ${takenCartelas[num].userName}`
-                          : isTakenByMe
-                            ? "Selected by you"
-                            : "Click to select"
-                    }
-                    className={`relative flex h-12 items-center justify-center rounded-xl border text-sm font-semibold transition-all
-                      ${
-                        isSelected || isTakenByMe
-                          ? "text-white"
+                  return (
+                    <button
+                      key={num}
+                      onClick={() => toggleCartelaSelection(num)}
+                      disabled={isTakenByOther || isSelectionLocked}
+                      className={`h-11 rounded-xl border text-base font-black leading-none transition-colors ${
+                        isTakenByOther ? "cursor-not-allowed" : ""
+                      }`}
+                      style={{
+                        borderColor: UI_COLORS.tileBorder,
+                        color: UI_COLORS.textDark,
+                        backgroundColor:
+                          isSelected || isTakenByMe
+                            ? UI_COLORS.selectedCard
+                            : isTakenByOther
+                              ? UI_COLORS.selectedCard
+                              : UI_COLORS.availableCard,
+                        boxShadow:
+                          isSelected || isTakenByMe || isTakenByOther
+                            ? "inset 0 0 0 2px #ffb266"
+                            : "none",
+                      }}
+                      title={
+                        isSelectionLocked
+                          ? "Selection is locked"
                           : isTakenByOther
-                            ? "text-white cursor-not-allowed"
-                            : "text-white"
+                            ? `Selected by ${takenCartelas[num].userName}`
+                            : isTakenByMe
+                              ? "Selected by you"
+                              : "Click to select"
                       }
-                    `}
-                    style={{
-                      borderColor: UI_COLORS.accent,
-                      backgroundColor:
-                        isSelected || isTakenByMe
-                          ? UI_COLORS.accent
-                          : isTakenByOther
-                            ? "#394155"
-                            : UI_COLORS.base,
-                    }}
-                  >
-                    {num}
-                    {(isSelected || isTakenByMe) && (
-                      <span
-                        className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white shadow-lg"
-                        style={{ backgroundColor: UI_COLORS.accent }}
-                      >
-                        ✓
-                      </span>
-                    )}
-                    {isTakenByOther && (
-                      <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#1E2330] text-xs font-bold text-white shadow-lg">
-                        ✗
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+                    >
+                      {num}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
 
         <div
-          className="rounded-3xl border p-5"
+          className="mt-2 rounded-xl border px-3 py-2"
           style={{
-            borderColor: UI_COLORS.accent,
-            backgroundColor: UI_COLORS.surface,
+            backgroundColor: UI_COLORS.tileBg,
+            borderColor: UI_COLORS.tileBorder,
+            color: UI_COLORS.textDark,
           }}
         >
-          <div className="flex items-center justify-between">
-            <button
-              onClick={prevCartela}
-              disabled={selectedCartelas.length <= 1}
-              className="rounded-2xl border p-3 transition disabled:cursor-not-allowed disabled:opacity-40"
-              style={{
-                borderColor: UI_COLORS.accent,
-                backgroundColor: UI_COLORS.base,
-                color: UI_COLORS.surface,
-              }}
-            >
-              ◀
-            </button>
-            <div className="text-center">
-              <p
-                className="text-sm uppercase tracking-widest"
-                style={{ color: UI_COLORS.base }}
-              >
-                Card
-              </p>
-              <h3
-                className="mt-1 text-xl font-semibold"
-                style={{ color: UI_COLORS.base }}
-              >
-                #{currentSelectedCartela || "--"} (
-                {selectedCartelas.length || 0}
-                selected)
-              </h3>
-            </div>
-            <button
-              onClick={nextCartela}
-              disabled={selectedCartelas.length <= 1}
-              className="rounded-2xl border p-3 transition disabled:cursor-not-allowed disabled:opacity-40"
-              style={{
-                borderColor: UI_COLORS.accent,
-                backgroundColor: UI_COLORS.base,
-                color: UI_COLORS.surface,
-              }}
-            >
-              ▶
-            </button>
-          </div>
+          <p className="text-xs font-bold">
+            Selected card{selectedCartelas.length === 1 ? "" : "s"}
+          </p>
+          {selectedCartelas.length > 0 ? (
+            <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
+              {selectedCartelas.map((cardId) => {
+                const cardData = bingoCards.find((card) => card.id === cardId);
+                if (!cardData) return null;
 
-          {selectedCard ? (
-            <div className="mt-6 max-w-3xl mx-auto">
-              <div className="grid grid-cols-5 gap-1 mb-2">
-                {["B", "I", "N", "G", "O"].map((letter) => (
+                return (
                   <div
-                    key={letter}
-                    className="rounded-t-xl text-center py-2 font-bold text-lg tracking-widest"
+                    key={cardId}
+                    className="min-w-[210px] rounded-lg border p-2"
                     style={{
-                      backgroundColor: UI_COLORS.base,
-                      color: UI_COLORS.surface,
+                      backgroundColor: UI_COLORS.cardBg,
+                      borderColor: UI_COLORS.tileBorder,
                     }}
                   >
-                    {letter}
-                  </div>
-                ))}
-              </div>
-              <div
-                className="grid grid-cols-5 gap-1 rounded-b-xl border p-2"
-                style={{
-                  borderColor: UI_COLORS.accent,
-                  backgroundColor: UI_COLORS.surface,
-                }}
-              >
-                {Array.from({ length: 5 }).map((_, rowIdx) => (
-                  <>
-                    {["B", "I", "N", "G", "O"].map((col) => {
-                      const value = selectedCard[col][rowIdx];
-                      const isFree = value === "FREE";
-                      return (
+                    <p className="mb-1 text-[11px] font-bold">Card #{cardId}</p>
+                    <div className="grid grid-cols-5 gap-1 mb-1">
+                      {["B", "I", "N", "G", "O"].map((letter) => (
                         <div
-                          key={col + rowIdx}
-                          className={`flex aspect-square items-center justify-center rounded-lg border-2 text-lg font-semibold
-                            ${isFree ? "text-[#F2F2EC]" : "text-[#1E2330]"}
-                          `}
+                          key={`${cardId}-${letter}`}
+                          className="rounded text-center text-[10px] font-black py-1"
                           style={{
-                            borderColor: UI_COLORS.accent,
-                            backgroundColor: isFree
-                              ? UI_COLORS.accent
-                              : UI_COLORS.surface,
+                            backgroundColor: UI_COLORS.selectedCard,
+                            color: "#fff",
                           }}
                         >
-                          {value}
+                          {letter}
                         </div>
-                      );
-                    })}
-                  </>
-                ))}
-              </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-5 gap-1">
+                      {Array.from({ length: 5 }).map((_, rowIdx) =>
+                        ["B", "I", "N", "G", "O"].map((col) => {
+                          const value = cardData[col][rowIdx];
+                          const isFree = value === "FREE";
+                          return (
+                            <div
+                              key={`${cardId}-${col}-${rowIdx}`}
+                              className="flex h-7 items-center justify-center rounded text-[10px] font-bold"
+                              style={{
+                                backgroundColor: isFree
+                                  ? UI_COLORS.selectedCard
+                                  : UI_COLORS.tileBg,
+                                color: isFree ? "#fff" : UI_COLORS.textDark,
+                                border: `1px solid ${UI_COLORS.tileBorder}`,
+                              }}
+                            >
+                              {value}
+                            </div>
+                          );
+                        }),
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : (
-            <div className="mt-6 text-center" style={{ color: UI_COLORS.base }}>
-              No card selected.
-            </div>
+            <></>
           )}
         </div>
 
+        <button
+          onClick={leaveRoom}
+          className="mt-3 w-full rounded-xl border py-2 text-sm font-bold"
+          style={{
+            backgroundColor: UI_COLORS.tileBg,
+            borderColor: UI_COLORS.tileBorder,
+            color: UI_COLORS.textDark,
+          }}
+        >
+          Leave Room
+        </button>
       </div>
 
       {showBackNavigationModal && (
@@ -1025,17 +837,17 @@ export default function WaitingRoom() {
           <div
             className="w-full max-w-md rounded-3xl border p-6"
             style={{
-              borderColor: UI_COLORS.accent,
-              backgroundColor: UI_COLORS.surface,
+              borderColor: UI_COLORS.tileBorder,
+              backgroundColor: UI_COLORS.tileBg,
             }}
           >
             <h2
               className="text-2xl font-bold"
-              style={{ color: UI_COLORS.base }}
+              style={{ color: UI_COLORS.textDark }}
             >
               Leave room?
             </h2>
-            <p className="mt-3" style={{ color: UI_COLORS.base }}>
+            <p className="mt-3" style={{ color: UI_COLORS.textDark }}>
               You will be removed and sent to lobby.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -1043,9 +855,9 @@ export default function WaitingRoom() {
                 onClick={handleBackNavigationWait}
                 className="flex-1 rounded-2xl px-5 py-3 font-semibold transition hover:scale-[1.02] border"
                 style={{
-                  backgroundColor: UI_COLORS.accent,
-                  color: UI_COLORS.surface,
-                  borderColor: UI_COLORS.base,
+                  backgroundColor: UI_COLORS.availableCard,
+                  color: UI_COLORS.textDark,
+                  borderColor: UI_COLORS.tileBorder,
                 }}
               >
                 Stay
@@ -1054,9 +866,9 @@ export default function WaitingRoom() {
                 onClick={handleBackNavigationLeave}
                 className="flex-1 rounded-2xl border px-5 py-3 font-semibold transition hover:scale-[1.02]"
                 style={{
-                  borderColor: UI_COLORS.accent,
-                  backgroundColor: UI_COLORS.base,
-                  color: UI_COLORS.surface,
+                  borderColor: UI_COLORS.tileBorder,
+                  backgroundColor: UI_COLORS.selectedCard,
+                  color: "#fff",
                 }}
               >
                 Leave
