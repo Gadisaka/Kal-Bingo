@@ -85,6 +85,24 @@ const Dashboard = () => {
     return `${Math.floor(diffInSeconds / 86400)} days ago`;
   };
 
+  const getActivityWinnerLabel = (activity) => {
+    if (Array.isArray(activity?.winners) && activity.winners.length > 0) {
+      return activity.winners
+        .map((w) => w?.userName || w?.name || w?.userId || "Unknown")
+        .join(", ");
+    }
+    if (typeof activity?.winner === "string") return activity.winner;
+    if (activity?.winner && typeof activity.winner === "object") {
+      return (
+        activity.winner.userName ||
+        activity.winner.name ||
+        activity.winner.userId ||
+        "No winner"
+      );
+    }
+    return "No winner";
+  };
+
   const getStatusBadge = (status) => {
     const statusConfig = {
       playing: "bg-blue-100 text-blue-800",
@@ -193,7 +211,7 @@ const Dashboard = () => {
                         {activity.message}
                       </p>
                       <p className="text-xs text-gray-500">
-                        Winner: {activity.winner} •{" "}
+                        Winner: {getActivityWinnerLabel(activity)} •{" "}
                         {formatTimeAgo(activity.createdAt)}
                       </p>
                     </div>

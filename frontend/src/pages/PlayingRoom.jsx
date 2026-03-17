@@ -41,6 +41,8 @@ const getBallData = (num) => {
 };
 
 const CARD_SWIPE_THRESHOLD_PX = 45;
+const WINNER_DISPLAY_SECONDS = 10;
+const STOP_VOICE_DELAY_MS = 3000;
 const UI_COLORS = {
   base: "#2e1c44",
   surface: "#f4eff9",
@@ -62,6 +64,10 @@ export default function PlayingRoom() {
   const navigationState = location.state || {};
   const isSpectator = navigationState.isSpectator === true;
   const userId = user?.id || user?._id || null;
+  const cardLockStorageKey = useMemo(() => {
+    if (!gameRoomId || !userId) return null;
+    return `kal-bingo:card-locked:${gameRoomId}:${userId}`;
+  }, [gameRoomId, userId]);
 
   // --- AUDIO SETUP ---
   const {
@@ -72,7 +78,7 @@ export default function PlayingRoom() {
     stopAll: stopAllAudio,
     initializeAudioContext,
   } = useBingoAudio();
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const lastPlayedNumberRef = useRef(null);
   const hasPlayedStartSoundRef = useRef(false);
@@ -106,11 +112,15 @@ export default function PlayingRoom() {
   const [, setCardTransition] = useState("");
 
   // Modal/Dialog States
+  const [winnerEventData, setWinnerEventData] = useState(null);
   const [systemWinnerData, setSystemWinnerData] = useState(null);
-  const [winnerCountdown, setWinnerCountdown] = useState(10);
+  const [winnerCountdown, setWinnerCountdown] = useState(
+    WINNER_DISPLAY_SECONDS,
+  );
 
   // Notification State
   const [notifications, setNotifications] = useState([]);
+  const [isCardLocked, setIsCardLocked] = useState(false);
 
   // Notification helper function
   const showNotification = useCallback((message, type = "info") => {
@@ -123,6 +133,23 @@ export default function PlayingRoom() {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
     }, 4000);
   }, []);
+
+  const persistCardLockState = useCallback(
+    (locked) => {
+      setIsCardLocked(locked);
+      if (!cardLockStorageKey) return;
+      try {
+        if (locked) {
+          localStorage.setItem(cardLockStorageKey, "1");
+        } else {
+          localStorage.removeItem(cardLockStorageKey);
+        }
+      } catch {
+        // Ignore storage errors; in-memory state still works.
+      }
+    },
+    [cardLockStorageKey],
+  );
 
   // Refs
   const mainBallRef = useRef(null);
@@ -265,8 +292,9 @@ export default function PlayingRoom() {
       initializeAudioContext().then((success) => {
         if (success) {
           setAudioUnlocked(true);
-          setIsMuted(false); // Ensure sound is not muted
-          setVolume(1);
+          setIsMuted(true);
+          setVolume(0);
+          stopAllAudio();
           console.log("[PlayingRoom] Audio auto-unlocked on game start");
         }
       });
@@ -277,7 +305,30 @@ export default function PlayingRoom() {
     isAudioLoaded,
     initializeAudioContext,
     setVolume,
+    stopAllAudio,
   ]);
+
+  useEffect(() => {
+    if (!cardLockStorageKey) return;
+    try {
+      const wasLocked = localStorage.getItem(cardLockStorageKey) === "1";
+      setIsCardLocked(wasLocked);
+    } catch {
+      setIsCardLocked(false);
+    }
+  }, [cardLockStorageKey]);
+
+  useEffect(() => {
+    if (room?.status === "finished") {
+      persistCardLockState(false);
+    }
+  }, [room?.status, persistCardLockState]);
+
+  useEffect(() => {
+    if (systemWinnerData) {
+      persistCardLockState(false);
+    }
+  }, [systemWinnerData, persistCardLockState]);
 
   // --- INITIALIZE STOPGAME SOUND ---
   useEffect(() => {
@@ -311,24 +362,30 @@ export default function PlayingRoom() {
     }
   }, [isAudioLoaded, audioUnlocked, isMuted, playGameStart]);
 
-  // --- PLAY STOPGAME SOUND ON GAME END/WINNER ---
+  // --- REVEAL RESULT CARD + PLAY STOPGAME SOUND AFTER DELAY ---
   useEffect(() => {
-    if (systemWinnerData && !hasPlayedStopgameRef.current && !isMuted) {
+    if (!winnerEventData) return;
+
+    const timeoutId = setTimeout(() => {
+      setSystemWinnerData(winnerEventData);
+
+      if (hasPlayedStopgameRef.current || isMuted) return;
       hasPlayedStopgameRef.current = true;
-      if (stopgameSoundRef.current) {
-        // Wait for sound to load if not already loaded
-        if (stopgameSoundRef.current.state() === "loaded") {
+      if (!stopgameSoundRef.current) return;
+      // Wait for sound to load if not already loaded
+      if (stopgameSoundRef.current.state() === "loaded") {
+        stopgameSoundRef.current.play();
+        console.log("[PlayingRoom] Playing stopgame sound (game ended)");
+      } else {
+        stopgameSoundRef.current.once("load", () => {
           stopgameSoundRef.current.play();
           console.log("[PlayingRoom] Playing stopgame sound (game ended)");
-        } else {
-          stopgameSoundRef.current.once("load", () => {
-            stopgameSoundRef.current.play();
-            console.log("[PlayingRoom] Playing stopgame sound (game ended)");
-          });
-        }
+        });
       }
-    }
-  }, [systemWinnerData, isMuted]);
+    }, STOP_VOICE_DELAY_MS);
+
+    return () => clearTimeout(timeoutId);
+  }, [winnerEventData, isMuted]);
 
   // Reset stopgame ref when room changes (for new games)
   useEffect(() => {
@@ -338,7 +395,7 @@ export default function PlayingRoom() {
   // Winner modal countdown: hide modal and redirect all players after 10s
   useEffect(() => {
     if (!systemWinnerData) return;
-    setWinnerCountdown(10);
+    setWinnerCountdown(WINNER_DISPLAY_SECONDS);
     const intervalId = setInterval(() => {
       setWinnerCountdown((prev) => {
         if (prev <= 1) {
@@ -408,6 +465,7 @@ export default function PlayingRoom() {
   }, [selectedCartelas, currentCartelaIndex]);
 
   const toggleCell = (val, cardId) => {
+    if (isCardLocked) return;
     if (val === "FREE") return;
     if (!cardId) return;
 
@@ -427,6 +485,7 @@ export default function PlayingRoom() {
         room &&
         hasReceivedUpdate &&
         room.status !== "playing" &&
+        !winnerEventData &&
         !systemWinnerData
       ) {
         navigate("/");
@@ -446,7 +505,15 @@ export default function PlayingRoom() {
     if (!isMember || (!isPlaying && !isFinished && !showingWinnerModal)) {
       navigate("/");
     }
-  }, [room, user, hasReceivedUpdate, navigate, systemWinnerData, isSpectator]);
+  }, [
+    room,
+    user,
+    hasReceivedUpdate,
+    navigate,
+    winnerEventData,
+    systemWinnerData,
+    isSpectator,
+  ]);
 
   // --- SOCKET LISTENERS ---
   useEffect(() => {
@@ -517,29 +584,79 @@ export default function PlayingRoom() {
       },
       "bingo-winner": (d) => {
         if (d.roomId === gameRoomId) {
-          setSystemWinnerData(d);
+          const normalizedWinners = Array.isArray(d?.winners)
+            ? d.winners
+            : d?.winner
+              ? [d.winner]
+              : [];
+          const normalizedTotalPrize =
+            Number(d?.totalPrize ?? d?.prize ?? 0) || 0;
+          const normalizedSplitPrize =
+            Number(
+              d?.splitPrize ??
+                (normalizedWinners.length > 0
+                  ? normalizedTotalPrize / normalizedWinners.length
+                  : 0),
+            ) || 0;
+          setWinnerEventData({
+            ...d,
+            winner: d?.winner || normalizedWinners[0] || null,
+            winners: normalizedWinners,
+            totalPrize: normalizedTotalPrize,
+            splitPrize: normalizedSplitPrize,
+          });
         }
       },
-      "bingo-no-win": () => showNotification("No winning pattern", "info"),
-      "bingo-not-now": () => showNotification("Will win next number", "info"),
+      "bingo-claim-accepted": () => {
+        persistCardLockState(true);
+        showNotification(
+          "Bingo claim received. Waiting for next call.",
+          "info",
+        );
+      },
+      "bingo-no-win": () => {
+        persistCardLockState(true);
+        showNotification("No winning pattern. Card locked.", "warning");
+      },
+      "bingo-not-now": () => {
+        persistCardLockState(true);
+        showNotification(
+          "Will win next number. Card locked until game ends.",
+          "info",
+        );
+      },
       "bingo-check-error": () => showNotification("Error occurred", "error"),
       "bingo-already-won": () => showNotification("Already won", "warning"),
       "system:gameFinished": (d) => {
         if (d.roomId === gameRoomId) {
-          navigate("/");
+          persistCardLockState(false);
+          if (!winnerEventData && !systemWinnerData) {
+            navigate("/");
+          }
         }
       },
     };
     Object.entries(handlers).forEach(([e, h]) => activeSocket.on(e, h));
     return () =>
       Object.entries(handlers).forEach(([e, h]) => activeSocket.off(e, h));
-  }, [activeSocket, gameRoomId, showNotification, isSpectator, navigate]);
+  }, [
+    activeSocket,
+    gameRoomId,
+    showNotification,
+    isSpectator,
+    navigate,
+    persistCardLockState,
+    winnerEventData,
+    systemWinnerData,
+  ]);
 
   const spectatorRoomReady =
     !isSpectator || (hasReceivedUpdate && room?.status === "playing");
 
   useEffect(() => {
     if (!isSpectator) return;
+    if (winnerEventData) return;
+    if (systemWinnerData) return;
     // If spectating but we still don't have a confirmed live room after a short grace period,
     // return to lobby to avoid showing stale/fallback values.
     const timeout = setTimeout(() => {
@@ -548,7 +665,13 @@ export default function PlayingRoom() {
       }
     }, 5000);
     return () => clearTimeout(timeout);
-  }, [isSpectator, spectatorRoomReady, navigate]);
+  }, [
+    isSpectator,
+    spectatorRoomReady,
+    navigate,
+    winnerEventData,
+    systemWinnerData,
+  ]);
 
   // --- NAVIGATION ---
   const totalCartelas = selectedCartelas.length;
@@ -628,6 +751,7 @@ export default function PlayingRoom() {
     : new Set();
 
   const handleBingoClick = () => {
+    if (isCardLocked) return;
     if (selectedCartelas.length === 0) {
       showNotification("No card selected", "warning");
       return;
@@ -652,20 +776,18 @@ export default function PlayingRoom() {
       const success = await initializeAudioContext();
       if (success) {
         setAudioUnlocked(true);
-        setVolume(1);
+        setIsMuted(true);
+        setVolume(0);
+        stopAllAudio();
         console.log("[PlayingRoom] Audio context unlocked");
       }
       return;
     }
 
-    // Subsequent clicks toggle mute
-    const newMuted = !isMuted;
-    setIsMuted(newMuted);
-    setVolume(newMuted ? 0 : 1);
-
-    if (newMuted) {
-      stopAllAudio();
-    }
+    // Keep permanently muted
+    setIsMuted(true);
+    setVolume(0);
+    stopAllAudio();
   };
 
   // Get initial values from navigation state (passed from waiting room)
@@ -771,6 +893,8 @@ export default function PlayingRoom() {
     const winningCellsSet = new Set(
       (winningCells || []).map((cell) => `${cell.row}-${cell.col}`),
     );
+    const latestCalledNumber =
+      calledNumbers.length > 0 ? calledNumbers[calledNumbers.length - 1] : null;
 
     const headerColors = [
       BINGO_COLORS.B.hex,
@@ -796,6 +920,8 @@ export default function PlayingRoom() {
             const val = cardData[col][rowIdx];
             const isWinningCell = winningCellsSet.has(`${rowIdx}-${colIdx}`);
             const isCalled = val !== "FREE" && calledNumbers.includes(val);
+            const isLastCalledWinningCell =
+              isWinningCell && val !== "FREE" && val === latestCalledNumber;
 
             return (
               <div
@@ -806,7 +932,7 @@ export default function PlayingRoom() {
                     : isCalled
                       ? "bg-yellow-200 border-yellow-400"
                       : "bg-[#FFFBF0]"
-                }`}
+                } ${isLastCalledWinningCell ? "animate-winning-last-called" : ""}`}
               >
                 {val === "FREE" ? (
                   <span className="text-[#FFD700] text-sm animate-pulse">
@@ -826,7 +952,7 @@ export default function PlayingRoom() {
                   </span>
                 )}
                 {isWinningCell && (
-                  <div className="absolute inset-0 border-2 border-green-600 rounded-sm animate-pulse"></div>
+                  <div className="absolute inset-0 border-2 border-green-600 rounded-sm"></div>
                 )}
               </div>
             );
@@ -838,8 +964,53 @@ export default function PlayingRoom() {
 
   // Helper to get first 3 letters of name + ***
   const getMaskedWinnerName = (userName) => {
-    return userName;
+    return String(userName || "").replace(/^@+/, "");
   };
+
+  const getWinnerHeadline = () => {
+    if (winnerList.length === 0) return "Winner on this call";
+    const firstWinnerName = getMaskedWinnerName(
+      winnerList[0]?.userName || "Winner",
+    );
+    if (winnerList.length === 1) {
+      return `${firstWinnerName} has won the game`;
+    }
+    const othersCount = winnerList.length - 1;
+    return `${firstWinnerName} and ${othersCount} other${
+      othersCount > 1 ? "s" : ""
+    } have won the game`;
+  };
+
+  const winnerList = useMemo(() => {
+    if (!systemWinnerData) return [];
+    if (
+      Array.isArray(systemWinnerData.winners) &&
+      systemWinnerData.winners.length
+    ) {
+      return systemWinnerData.winners;
+    }
+    if (systemWinnerData.winner) {
+      return [systemWinnerData.winner];
+    }
+    return [];
+  }, [systemWinnerData]);
+
+  // const winnerTotalPrize = useMemo(() => {
+  //   if (!systemWinnerData) return 0;
+  //   return (
+  //     Number(systemWinnerData.totalPrize ?? systemWinnerData.prize ?? 0) || 0
+  //   );
+  // }, [systemWinnerData]);
+
+  // const winnerSplitPrize = useMemo(() => {
+  //   if (!systemWinnerData) return 0;
+  //   if (typeof systemWinnerData.splitPrize === "number") {
+  //     return systemWinnerData.splitPrize;
+  //   }
+  //   return winnerList.length > 0
+  //     ? Number((winnerTotalPrize / winnerList.length).toFixed(2))
+  //     : 0;
+  // }, [systemWinnerData, winnerList.length, winnerTotalPrize]);
 
   return (
     <div
@@ -962,13 +1133,17 @@ export default function PlayingRoom() {
                   return (
                     <div
                       key={num}
-                      className="h-[36px] rounded-md flex items-center justify-center text-[12px] font-black"
+                      className={`h-[36px] rounded-md flex items-center justify-center text-[12px] font-black ${
+                        isLatest ? "animate-called-blink" : ""
+                      }`}
                       style={{
-                        backgroundColor: isMarkedOnCurrentCard
+                        backgroundColor: isLatest
                           ? UI_COLORS.marked
-                          : isCalled || isLatest
-                            ? UI_COLORS.called
-                            : "#d9d1e8",
+                          : isMarkedOnCurrentCard
+                            ? UI_COLORS.marked
+                            : isCalled
+                              ? UI_COLORS.called
+                              : "#d9d1e8",
                         color:
                           isCalled || isLatest || isMarkedOnCurrentCard
                             ? "#fff"
@@ -1089,7 +1264,9 @@ export default function PlayingRoom() {
                             const isMarked =
                               val !== "FREE" &&
                               new Set(
-                                (markedNumbers[currentCardId] || []).map(String),
+                                (markedNumbers[currentCardId] || []).map(
+                                  String,
+                                ),
                               ).has(String(val));
                             const isCalled =
                               val !== "FREE" && calledNumbersList.includes(val);
@@ -1136,13 +1313,26 @@ export default function PlayingRoom() {
                   )}
                 </div>
 
-                <button
-                  onClick={handleBingoClick}
-                  className="w-full mt-2 py-3 rounded-2xl font-black text-3xl leading-none active:scale-95 transition-transform"
-                  style={{ backgroundColor: UI_COLORS.called, color: "#fff" }}
-                >
-                  BINGO!
-                </button>
+                {!isCardLocked ? (
+                  <button
+                    onClick={handleBingoClick}
+                    className="w-full mt-2 py-3 rounded-2xl font-black text-3xl leading-none active:scale-95 transition-transform"
+                    style={{ backgroundColor: UI_COLORS.called, color: "#fff" }}
+                  >
+                    BINGO!
+                  </button>
+                ) : (
+                  <div
+                    className="w-full mt-2 py-3 rounded-2xl border text-center text-sm font-black leading-none"
+                    style={{
+                      backgroundColor: UI_COLORS.tileBg,
+                      borderColor: UI_COLORS.tileBorder,
+                      color: UI_COLORS.textDark,
+                    }}
+                  >
+                    Card locked until game ends
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -1185,37 +1375,52 @@ export default function PlayingRoom() {
               <h2 className="text-[22px] font-black leading-none text-white">
                 BINGO!
               </h2>
-              <div className="mt-3 flex items-center justify-center gap-2 text-white">
-                <span
-                  className="rounded-lg px-2.5 py-1 text-[18px] font-black leading-none"
-                  style={{ backgroundColor: UI_COLORS.marked }}
-                >
-                  {getMaskedWinnerName(systemWinnerData.winner.userName)}
-                </span>
-                <span className="text-[18px] font-black leading-none">
-                  has won the game
-                </span>
+              <div className="mt-3 text-white">
+                <p className="text-[16px] font-black leading-none">
+                  {getWinnerHeadline()}
+                </p>
+                {/* <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                  {winnerList.map((winner, idx) => (
+                    <span
+                      key={`${winner.userId || "winner"}-${winner.cartelaId || idx}`}
+                      className="rounded-lg px-2.5 py-1 text-[16px] font-black leading-none"
+                      style={{ backgroundColor: UI_COLORS.marked }}
+                    >
+                      {getMaskedWinnerName(winner.userName)}
+                    </span>
+                  ))}
+                </div> */}
+                {/* <p className="mt-2 text-[14px] font-bold leading-none">
+                  Total prize: Br {Math.trunc(Number(winnerTotalPrize || 0))}
+                </p>
+                <p className="mt-1 text-[14px] font-bold leading-none">
+                  Prize per winner: Br {Math.trunc(Number(winnerSplitPrize || 0))}
+                </p> */}
               </div>
             </div>
 
             {/* Winner Card Display */}
-            {systemWinnerData.winner.cartelaId && (
-              <div
-                className="mt-2 rounded-xl border p-2"
-                style={{ borderColor: UI_COLORS.tileBorder }}
-              >
-                {renderWinnerCard(
-                  systemWinnerData.winner.cartelaId,
-                  systemWinnerData.winner.winningCells || [],
-                  calledNumbersList,
-                )}
-                <p
-                  className="mt-1 text-[16px] font-black leading-none"
-                  style={{ color: "#ece4f6" }}
-                >
-                  Board number {systemWinnerData.winner.cartelaId}
-                </p>
-              </div>
+            {winnerList.map(
+              (winner, idx) =>
+                winner?.cartelaId && (
+                  <div
+                    key={`${winner.userId || "winner-card"}-${winner.cartelaId}-${idx}`}
+                    className="mt-2 rounded-xl border p-2"
+                    style={{ borderColor: UI_COLORS.tileBorder }}
+                  >
+                    {renderWinnerCard(
+                      winner.cartelaId,
+                      winner.winningCells || [],
+                      calledNumbersList,
+                    )}
+                    <p
+                      className="mt-1 text-[16px] font-black leading-none"
+                      style={{ color: "#ece4f6" }}
+                    >
+                      Board number {winner.cartelaId}
+                    </p>
+                  </div>
+                ),
             )}
 
             <div
@@ -1263,6 +1468,20 @@ export default function PlayingRoom() {
         }
         .animate-slide-down {
           animation: slideDown 0.3s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        }
+        @keyframes calledBlink {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.45; transform: scale(1.08); }
+        }
+        .animate-called-blink {
+          animation: calledBlink 0.8s ease-in-out infinite;
+        }
+        @keyframes winningLastCalledBlink {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.08); opacity: 0.5; }
+        }
+        .animate-winning-last-called {
+          animation: winningLastCalledBlink 0.8s ease-in-out infinite;
         }
       `}</style>
     </div>

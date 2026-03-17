@@ -30,6 +30,16 @@ const useSettingsStore = create((set, get) => ({
       rewardAmount: 50,
       maxReferrals: 0,
     },
+    withdrawal: {
+      minAmount: 50,
+      maxAmount: 50000,
+      banks: [
+        { id: "telebirr", label: "Telebirr", enabled: true },
+        { id: "cbe", label: "CBE", enabled: true },
+        { id: "awash", label: "Awash", enabled: true },
+        { id: "abyssinia", label: "Abyssinia", enabled: true },
+      ],
+    },
   },
   spinConfig: {
     spinCostPoints: 500,
@@ -216,6 +226,37 @@ const useSettingsStore = create((set, get) => ({
   saveReferralSettings: async () => {
     const referral = get().settings.referral;
     await get().updateSettings({ referral });
+  },
+
+  updateWithdrawalField: (fieldName, value) => {
+    set((state) => ({
+      settings: {
+        ...state.settings,
+        withdrawal: {
+          ...state.settings.withdrawal,
+          [fieldName]: value,
+        },
+      },
+    }));
+  },
+
+  updateWithdrawalBank: (bankId, updates) => {
+    set((state) => ({
+      settings: {
+        ...state.settings,
+        withdrawal: {
+          ...state.settings.withdrawal,
+          banks: (state.settings.withdrawal?.banks || []).map((bank) =>
+            bank.id === bankId ? { ...bank, ...updates } : bank,
+          ),
+        },
+      },
+    }));
+  },
+
+  saveWithdrawalSettings: async () => {
+    const withdrawal = get().settings.withdrawal;
+    await get().updateSettings({ withdrawal });
   },
 
   // Spin Config Actions (legacy — kept for compatibility)

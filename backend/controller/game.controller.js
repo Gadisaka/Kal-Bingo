@@ -76,6 +76,11 @@ export const getGameHistory = async (req, res) => {
       playerCount: Array.isArray(game.players) ? game.players.length : 0,
       players: Array.isArray(game.players) ? game.players : [],
       winner: game.winner,
+      winners: Array.isArray(game.winners)
+        ? game.winners
+        : game.winner
+          ? [game.winner]
+          : [],
       prize: game.prize,
       hostUserId: game.hostUserId
         ? String(game.hostUserId._id || game.hostUserId)
@@ -229,14 +234,24 @@ export const getDashboardStats = async (req, res) => {
 
     const recentActivity = recentGames.map((game) => {
       const playerCount = Array.isArray(game.players) ? game.players.length : 0;
+      const winners = Array.isArray(game.winners)
+        ? game.winners
+        : game.winner
+          ? [game.winner]
+          : [];
       const winnerName =
-        game.winner?.userName || game.winner?.name || "No winner";
+        winners.length > 0
+          ? winners
+              .map((w) => w?.userName || w?.name || w?.userId || "Unknown")
+              .join(", ")
+          : "No winner";
       return {
         id: String(game._id),
         message: `${playerCount} players played in ${
           game.gameType === "system" ? "System" : "User"
         } game`,
         winner: winnerName,
+        winners,
         stake: game.stake,
         prize: game.prize,
         createdAt: game.createdAt,

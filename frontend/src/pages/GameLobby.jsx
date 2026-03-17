@@ -226,6 +226,29 @@ export default function GameLobby() {
       });
     };
 
+    const handleRejoinSuccess = ({ room, calledNumbers }) => {
+      console.log("✅ Rejoin success! Room:", room.id);
+      if (joinTimeoutRef.current) {
+        clearTimeout(joinTimeoutRef.current);
+        joinTimeoutRef.current = null;
+      }
+      setJoinLoading(null);
+      const cartelasCount = Object.keys(room.selectedCartelas || {}).length;
+      const stake = room.betAmount || 0;
+      navigate(`/playing/${room.id}`, {
+        state: {
+          isSpectator: false,
+          roomType: "system",
+          stake,
+          playerCount: room.joinedPlayers?.length ?? 0,
+          calledNumbers,
+          cartelasCount,
+          prize: stake * cartelasCount,
+          selectedCartelas: room.selectedCartelas || {},
+        },
+      });
+    };
+
     const handleSocketError = (err) => {
       console.log("⚠️ Socket error:", err);
       if (joinTimeoutRef.current) {
@@ -274,6 +297,23 @@ export default function GameLobby() {
       );
     };
 
+    const handleRejoinDenied = ({ reason }) => {
+      console.log("❌ Rejoin denied:", reason);
+      if (joinTimeoutRef.current) {
+        clearTimeout(joinTimeoutRef.current);
+        joinTimeoutRef.current = null;
+      }
+      setJoinLoading(null);
+      socket.emit("system:getRooms");
+      alert(
+        reason === "room_not_found" || reason === "not_playing"
+          ? "This game has already ended."
+          : reason === "no_cartela"
+            ? "You can only rejoin if you already selected a card in this game."
+            : "Cannot rejoin right now. Please try again.",
+      );
+    };
+
     socket.on("system:roomsList", handleRoomsList);
     socket.on("system:roomCreated", handleRoomCreated);
     socket.on("system:roomUpdate", handleRoomUpdate);
@@ -285,8 +325,10 @@ export default function GameLobby() {
     socket.on("system:joinDenied", handleJoinDenied);
     socket.on("system:joinSuccess", handleJoinSuccess);
     socket.on("system:joinAsSpectator", handleSpectatorJoin);
+    socket.on("system:rejoinSuccess", handleRejoinSuccess);
     socket.on("system:spectateSuccess", handleSpectateSuccess);
     socket.on("system:spectateDenied", handleSpectateDenied);
+    socket.on("system:rejoinDenied", handleRejoinDenied);
     socket.on("error", handleSocketError);
 
     return () => {
@@ -301,8 +343,10 @@ export default function GameLobby() {
       socket.off("system:joinDenied", handleJoinDenied);
       socket.off("system:joinSuccess", handleJoinSuccess);
       socket.off("system:joinAsSpectator", handleSpectatorJoin);
+      socket.off("system:rejoinSuccess", handleRejoinSuccess);
       socket.off("system:spectateSuccess", handleSpectateSuccess);
       socket.off("system:spectateDenied", handleSpectateDenied);
+      socket.off("system:rejoinDenied", handleRejoinDenied);
       socket.off("error", handleSocketError);
       if (joinTimeoutRef.current) {
         clearTimeout(joinTimeoutRef.current);
@@ -344,6 +388,26 @@ export default function GameLobby() {
       }, 8000);
     },
     [socket],
+  );
+
+  const rejoinRoom = useCallback(
+    (roomId) => {
+      if (!user) return alert("Please login to rejoin a room");
+      setJoinLoading(roomId);
+      socket.emit("system:rejoinRoom", {
+        roomId,
+        userId: user.id,
+        username: user.name,
+      });
+      if (joinTimeoutRef.current) {
+        clearTimeout(joinTimeoutRef.current);
+      }
+      joinTimeoutRef.current = setTimeout(() => {
+        setJoinLoading(null);
+        alert("Rejoin request timed out. Please try again.");
+      }, 8000);
+    },
+    [socket, user],
   );
 
   const leaveRoom = () => {
@@ -417,6 +481,12 @@ export default function GameLobby() {
             const isPlaying = !waitingRoom && !!playingRoom;
             const isWaiting = !!waitingRoom;
             const playersCount = room?.joinedPlayers?.length ?? 0;
+            const canRejoinPlayingRoom =
+              isPlaying &&
+              !!playingRoom &&
+              Object.values(playingRoom.selectedCartelas || {}).some(
+                (selection) => String(selection?.userId) === String(user?.id),
+              );
             const isJoined =
               isWaiting &&
               room?.joinedPlayers?.some((p) => p.userId === user?.id);
@@ -497,7 +567,11 @@ export default function GameLobby() {
                   <div className="mt-2 flex gap-2">
                     {isPlaying ? (
                       <button
-                        onClick={() => spectateRoom(playingRoom.id, amount)}
+                        onClick={() =>
+                          canRejoinPlayingRoom
+                            ? rejoinRoom(playingRoom.id)
+                            : spectateRoom(playingRoom.id, amount)
+                        }
                         disabled={joinLoading === playingRoom.id}
                         className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-black disabled:opacity-60 border"
                         style={{
@@ -509,7 +583,9 @@ export default function GameLobby() {
                         <Eye className="h-4 w-4" />
                         {joinLoading === playingRoom.id
                           ? "Joining..."
-                          : "Watch"}
+                          : canRejoinPlayingRoom
+                            ? "Rejoin"
+                            : "Watch"}
                       </button>
                     ) : isWaiting && isJoined ? (
                       <button

@@ -1,6 +1,9 @@
 import dotenv from "dotenv";
 import connectDB from "../config/db.js";
-import BotGameConfig from "../model/botGameConfig.js";
+import BotGameConfig, {
+  BOT_TIME_WINDOWS,
+  buildDefaultTimeWindowBots,
+} from "../model/botGameConfig.js";
 import Settings from "../model/settings.js";
 
 dotenv.config();
@@ -69,6 +72,34 @@ function generateConfigForStake(stakeAmount) {
     config.notes = "Premium stakes - rare bot injection";
   }
 
+  // Fixed Addis windows: start with global defaults and bias by period.
+  const windowRanges = buildDefaultTimeWindowBots(
+    config.min_bots,
+    config.max_bots
+  );
+  const boostByWindow = {
+    midnight: 1.05,
+    morning: 1.15,
+    afternoon: 1.25,
+    night: 1.4,
+  };
+  for (const windowDef of BOT_TIME_WINDOWS) {
+    const factor = boostByWindow[windowDef.key] ?? 1;
+    const minBots = Math.max(
+      0,
+      Math.min(100, Math.round(config.min_bots * factor))
+    );
+    const maxBots = Math.max(
+      minBots,
+      Math.min(100, Math.round(config.max_bots * factor))
+    );
+    windowRanges[windowDef.key] = {
+      min_bots: minBots,
+      max_bots: maxBots,
+    };
+  }
+  config.time_window_bots = windowRanges;
+
   return config;
 }
 
@@ -104,7 +135,9 @@ const seedBotConfig = async () => {
         const hasChanges =
           existing.min_bots !== config.min_bots ||
           existing.max_bots !== config.max_bots ||
-          existing.bot_win_rate !== config.bot_win_rate;
+          existing.bot_win_rate !== config.bot_win_rate ||
+          JSON.stringify(existing.time_window_bots || {}) !==
+            JSON.stringify(config.time_window_bots || {});
 
         if (hasChanges) {
           await BotGameConfig.findOneAndUpdate(
@@ -162,6 +195,14 @@ const seedBotConfig = async () => {
           cfg.bot_win_rate
         }% win rate, ${cfg.is_active ? "ACTIVE" : "INACTIVE"}`
       );
+      const ranges = cfg.time_window_bots || {};
+      for (const windowDef of BOT_TIME_WINDOWS) {
+        const range = ranges[windowDef.key];
+        if (!range) continue;
+        console.log(
+          `      - ${windowDef.key} (${windowDef.label}): ${range.min_bots}-${range.max_bots}`
+        );
+      }
     }
   } catch (error) {
     console.error("❌ Error seeding bot configurations:", error);

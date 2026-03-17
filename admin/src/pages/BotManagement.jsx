@@ -24,6 +24,59 @@ import {
 } from "lucide-react";
 import { API_URL } from "../constant";
 
+const DEFAULT_FIXED_WINDOWS = [
+  { key: "midnight", startHour: 0, endHour: 5, label: "06:00-11:59" },
+  { key: "morning", startHour: 6, endHour: 11, label: "12:00-05:59" },
+  { key: "afternoon", startHour: 12, endHour: 17, label: "06:00-11:59" },
+  { key: "night", startHour: 18, endHour: 23, label: "12:00-05:59" },
+];
+
+const buildDefaultWindowBots = (minBots = 2, maxBots = 5) =>
+  DEFAULT_FIXED_WINDOWS.reduce((acc, windowDef) => {
+    acc[windowDef.key] = { min_bots: minBots, max_bots: maxBots };
+    return acc;
+  }, {});
+
+const mergeWindowsForUi = (backendWindows = []) => {
+  if (!Array.isArray(backendWindows) || backendWindows.length === 0) {
+    return DEFAULT_FIXED_WINDOWS;
+  }
+
+  const frontendLabelByKey = new Map(
+    DEFAULT_FIXED_WINDOWS.map((windowDef) => [windowDef.key, windowDef.label]),
+  );
+
+  return backendWindows.map((windowDef) => ({
+    ...windowDef,
+    label: frontendLabelByKey.get(windowDef.key) || windowDef.label,
+  }));
+};
+
+const ensureConfigWindows = (config) => {
+  const fallback = buildDefaultWindowBots(
+    config?.min_bots ?? 2,
+    config?.max_bots ?? 5,
+  );
+  const source = config?.time_window_bots || {};
+  const normalized = {};
+
+  DEFAULT_FIXED_WINDOWS.forEach((windowDef) => {
+    const row = source[windowDef.key] || {};
+    const minBots = Number.isInteger(row.min_bots)
+      ? row.min_bots
+      : fallback[windowDef.key].min_bots;
+    const maxBots = Number.isInteger(row.max_bots)
+      ? row.max_bots
+      : fallback[windowDef.key].max_bots;
+    normalized[windowDef.key] = {
+      min_bots: minBots,
+      max_bots: Math.max(minBots, maxBots),
+    };
+  });
+
+  return { ...(config || {}), time_window_bots: normalized };
+};
+
 const BotManagement = () => {
   const [activeTab, setActiveTab] = useState("config");
   const [configs, setConfigs] = useState([]);
@@ -41,6 +94,7 @@ const BotManagement = () => {
 
   // Available game stakes from settings
   const [availableStakes, setAvailableStakes] = useState([]);
+  const [fixedWindows, setFixedWindows] = useState(DEFAULT_FIXED_WINDOWS);
 
   // Search state for bots
   const [botSearch, setBotSearch] = useState("");
@@ -49,13 +103,12 @@ const BotManagement = () => {
   const [editConfig, setEditConfig] = useState(null);
   const [newConfig, setNewConfig] = useState({
     stake_amount: "",
-    min_bots: 2,
-    max_bots: 5,
     bot_win_rate: 50,
     join_delay_min: 5,
     join_delay_max: 55,
     is_active: true,
     notes: "",
+    time_window_bots: buildDefaultWindowBots(2, 5),
   });
 
   // Edit bot modal state
@@ -108,7 +161,8 @@ const BotManagement = () => {
 
       if (configRes.ok) {
         const configData = await configRes.json();
-        setConfigs(configData.configs || []);
+        setConfigs((configData.configs || []).map(ensureConfigWindows));
+        setFixedWindows(mergeWindowsForUi(configData.fixed_windows));
       } else {
         console.error("Config fetch failed:", configRes.status);
       }
@@ -141,7 +195,7 @@ const BotManagement = () => {
       const searchParam = search ? `&search=${encodeURIComponent(search)}` : "";
       const res = await fetch(
         `${API_URL}/api/admin/bots/users?page=${page}&limit=20${searchParam}`,
-        { headers: getAuthHeaders() }
+        { headers: getAuthHeaders() },
       );
       if (res.ok) {
         const data = await res.json();
@@ -171,7 +225,7 @@ const BotManagement = () => {
           .then((data) => {
             setBots(data.bots || []);
             setPagination(
-              data.pagination || { page: 1, total: 0, totalPages: 0 }
+              data.pagination || { page: 1, total: 0, totalPages: 0 },
             );
           })
           .catch(() => setBots([]));
@@ -190,10 +244,24 @@ const BotManagement = () => {
   const saveConfig = async (config) => {
     setSaving(true);
     try {
+      const normalized = ensureConfigWindows(config);
+      const allRanges = Object.values(normalized.time_window_bots || {});
+      const globalMin = allRanges.length
+        ? Math.min(...allRanges.map((r) => Number(r.min_bots || 0)))
+        : 0;
+      const globalMax = allRanges.length
+        ? Math.max(...allRanges.map((r) => Number(r.max_bots || 0)))
+        : 0;
+      const payload = {
+        ...normalized,
+        min_bots: globalMin,
+        max_bots: globalMax,
+      };
+
       const res = await fetch(`${API_URL}/api/admin/bots/config`, {
         method: "POST",
         headers: getAuthHeaders(),
-        body: JSON.stringify(config),
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
@@ -202,13 +270,12 @@ const BotManagement = () => {
         setEditConfig(null);
         setNewConfig({
           stake_amount: "",
-          min_bots: 2,
-          max_bots: 5,
           bot_win_rate: 50,
           join_delay_min: 5,
           join_delay_max: 55,
           is_active: true,
           notes: "",
+          time_window_bots: buildDefaultWindowBots(2, 5),
         });
       } else {
         const data = await res.json();
@@ -229,7 +296,7 @@ const BotManagement = () => {
         {
           method: "PATCH",
           headers: getAuthHeaders(),
-        }
+        },
       );
 
       if (res.ok) {
@@ -250,7 +317,7 @@ const BotManagement = () => {
         {
           method: "DELETE",
           headers: getAuthHeaders(),
-        }
+        },
       );
 
       if (res.ok) {
@@ -270,7 +337,7 @@ const BotManagement = () => {
         {
           method: "PATCH",
           headers: getAuthHeaders(),
-        }
+        },
       );
 
       if (res.ok) {
@@ -344,6 +411,36 @@ const BotManagement = () => {
     } finally {
       setSavingBot(false);
     }
+  };
+
+  const updateWindowRange = (windowKey, field, value, isEdit) => {
+    const numeric = Number(value);
+    if (isEdit) {
+      const base = ensureConfigWindows(editConfig || {});
+      setEditConfig({
+        ...base,
+        time_window_bots: {
+          ...base.time_window_bots,
+          [windowKey]: {
+            ...base.time_window_bots[windowKey],
+            [field]: numeric,
+          },
+        },
+      });
+      return;
+    }
+
+    const base = ensureConfigWindows(newConfig);
+    setNewConfig({
+      ...base,
+      time_window_bots: {
+        ...base.time_window_bots,
+        [windowKey]: {
+          ...base.time_window_bots[windowKey],
+          [field]: numeric,
+        },
+      },
+    });
   };
 
   const tabs = [
@@ -520,7 +617,7 @@ const BotManagement = () => {
                           {availableStakes
                             .filter(
                               (stake) =>
-                                !configs.some((c) => c.stake_amount === stake)
+                                !configs.some((c) => c.stake_amount === stake),
                             )
                             .map((stake) => (
                               <option key={stake} value={stake}>
@@ -534,7 +631,7 @@ const BotManagement = () => {
                     {!editConfig &&
                       availableStakes.filter(
                         (stake) =>
-                          !configs.some((c) => c.stake_amount === stake)
+                          !configs.some((c) => c.stake_amount === stake),
                       ).length === 0 && (
                         <p className="text-xs text-amber-600 mt-1">
                           All stakes have configs. Add new stakes in Settings →
@@ -542,51 +639,82 @@ const BotManagement = () => {
                         </p>
                       )}
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Min Bots
-                    </label>
-                    <input
-                      type="number"
-                      value={editConfig?.min_bots ?? newConfig.min_bots}
-                      onChange={(e) =>
-                        editConfig
-                          ? setEditConfig({
-                              ...editConfig,
-                              min_bots: Number(e.target.value),
-                            })
-                          : setNewConfig({
-                              ...newConfig,
-                              min_bots: Number(e.target.value),
-                            })
-                      }
-                      className="w-full rounded-lg border-gray-300 border p-2"
-                      min="0"
-                      max="50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Max Bots
-                    </label>
-                    <input
-                      type="number"
-                      value={editConfig?.max_bots ?? newConfig.max_bots}
-                      onChange={(e) =>
-                        editConfig
-                          ? setEditConfig({
-                              ...editConfig,
-                              max_bots: Number(e.target.value),
-                            })
-                          : setNewConfig({
-                              ...newConfig,
-                              max_bots: Number(e.target.value),
-                            })
-                      }
-                      className="w-full rounded-lg border-gray-300 border p-2"
-                      min="0"
-                      max="50"
-                    />
+                  <div className="md:col-span-3 lg:col-span-4">
+                    <div className="rounded-lg border border-gray-300 p-3 bg-white">
+                      <p className="text-sm font-medium text-gray-700 mb-2">
+                        Fixed Time Windows (Africa/Addis_Ababa)
+                      </p>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        {fixedWindows.map((windowDef) => {
+                          const source = ensureConfigWindows(
+                            editConfig || newConfig,
+                          );
+                          const range = source.time_window_bots?.[
+                            windowDef.key
+                          ] || {
+                            min_bots: 0,
+                            max_bots: 0,
+                          };
+                          return (
+                            <div
+                              key={windowDef.key}
+                              className="border border-gray-200 rounded-md p-3"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="font-medium text-gray-900 capitalize">
+                                  {windowDef.key}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  {windowDef.label}
+                                </p>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">
+                                    Min Bots
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={range.min_bots}
+                                    onChange={(e) =>
+                                      updateWindowRange(
+                                        windowDef.key,
+                                        "min_bots",
+                                        e.target.value,
+                                        !!editConfig,
+                                      )
+                                    }
+                                    className="w-full rounded border-gray-300 border p-1.5"
+                                    min="0"
+                                    max="100"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-gray-600 mb-1">
+                                    Max Bots
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={range.max_bots}
+                                    onChange={(e) =>
+                                      updateWindowRange(
+                                        windowDef.key,
+                                        "max_bots",
+                                        e.target.value,
+                                        !!editConfig,
+                                      )
+                                    }
+                                    className="w-full rounded border-gray-300 border p-1.5"
+                                    min="0"
+                                    max="100"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
@@ -744,7 +872,7 @@ const BotManagement = () => {
                               <div>
                                 <p className="text-gray-500">Bots</p>
                                 <p className="font-medium">
-                                  {config.min_bots}-{config.max_bots}
+                                  {config.min_bots}-{config.max_bots} (overall)
                                 </p>
                               </div>
                               <div>
@@ -759,6 +887,26 @@ const BotManagement = () => {
                                   {config.join_delay_min}-
                                   {config.join_delay_max}s
                                 </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Window Ranges</p>
+                                <div className="text-xs text-gray-700 space-y-0.5">
+                                  {fixedWindows.map((windowDef) => {
+                                    const ranges =
+                                      ensureConfigWindows(
+                                        config,
+                                      ).time_window_bots;
+                                    const range = ranges[windowDef.key];
+                                    return (
+                                      <p
+                                        key={`${config.stake_amount}-${windowDef.key}`}
+                                      >
+                                        {windowDef.key}: {range.min_bots}-
+                                        {range.max_bots}
+                                      </p>
+                                    );
+                                  })}
+                                </div>
                               </div>
                               {config.notes && (
                                 <div>
@@ -789,7 +937,9 @@ const BotManagement = () => {
                               )}
                             </button>
                             <button
-                              onClick={() => setEditConfig(config)}
+                              onClick={() =>
+                                setEditConfig(ensureConfigWindows(config))
+                              }
                               className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
                               title="Edit"
                             >
@@ -1049,7 +1199,7 @@ const BotManagement = () => {
                                   </span>
                                 </div>
                               </div>
-                            )
+                            ),
                           )}
                         </div>
                       )}

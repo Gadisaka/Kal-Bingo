@@ -16,6 +16,7 @@ const revenueSchema = new mongoose.Schema(
 
     // Winner snapshot if known; null when recorded at stake debit time
     winner: { type: mongoose.Schema.Types.Mixed, default: null },
+    winners: { type: mongoose.Schema.Types.Mixed, default: [] },
 
     // Short text describing why this revenue was created (e.g., 'system_game_win_cut')
     reason: { type: String, required: true },

@@ -55,6 +55,18 @@ const Revenue = () => {
     });
   };
 
+  const getWinnerLabel = (revenue) => {
+    const winners = Array.isArray(revenue?.winners)
+      ? revenue.winners
+      : revenue?.winner
+        ? [revenue.winner]
+        : [];
+    if (winners.length === 0) return "—";
+    return winners
+      .map((w) => w?.userName || w?.userId || w?.name || "Unknown")
+      .join(", ");
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -223,7 +235,7 @@ const Revenue = () => {
                         {Array.isArray(r.players) ? r.players.length : "-"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        {r.winner?.userName || r.winner?.userId || "—"}
+                        {getWinnerLabel(r)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {String(r.gameRoom)}

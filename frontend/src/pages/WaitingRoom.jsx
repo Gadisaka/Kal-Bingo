@@ -14,7 +14,8 @@ const UI_COLORS = {
   tileBg: "#ffffff",
   tileBorder: "#e5e0ee",
   availableCard: "#f2d8ec",
-  selectedCard: "#ff7900",
+  selectedCard: "#0c9808",
+  takenByOtherCard: "#ff7900",
   textDark: "#342146",
 };
 
@@ -33,6 +34,9 @@ export default function WaitingRoom() {
   const takenCartelasRef = useRef({});
   const [selectionError, setSelectionError] = useState(null);
   const [isSelectionLocked, setIsSelectionLocked] = useState(false);
+  const [simulatedBotCartelas, setSimulatedBotCartelas] = useState([]);
+  const simulatedBotCartelasRef = useRef([]);
+  const simulatedBotTimersRef = useRef(new Map());
   const [showCountdownWarning, setShowCountdownWarning] = useState(false);
   const [showBackNavigationModal, setShowBackNavigationModal] = useState(false);
   const backNavigationRef = useRef(false);
@@ -66,17 +70,9 @@ export default function WaitingRoom() {
       });
 
       if (userId === user?.id) {
-        // Confirm our own selection
+        // Keep only one selected card for current user
         console.log(`Confirming own selection of cartela #${cartelaId}`);
-        setSelectedCartelas((prev) => {
-          if (!prev.includes(cartelaId)) {
-            const updated = [...prev, cartelaId].sort((a, b) => a - b);
-            console.log("Updated own selectedCartelas:", updated);
-            return updated;
-          }
-          console.log("Cartela already in list, current:", prev);
-          return prev;
-        });
+        setSelectedCartelas([cartelaId]);
       } else {
         // Another player selected a cartela I had selected
         console.log(
@@ -105,7 +101,9 @@ export default function WaitingRoom() {
         .sort((a, b) => a - b);
 
       if (myCartelas.length > 0) {
-        setSelectedCartelas(myCartelas);
+        setSelectedCartelas([myCartelas[myCartelas.length - 1]]);
+      } else {
+        setSelectedCartelas([]);
       }
     };
 
@@ -306,6 +304,79 @@ export default function WaitingRoom() {
   useEffect(() => {
     takenCartelasRef.current = takenCartelas;
   }, [takenCartelas]);
+
+  const simulatedBotCartelasSet = useMemo(
+    () => new Set(simulatedBotCartelas),
+    [simulatedBotCartelas],
+  );
+
+  useEffect(() => {
+    simulatedBotCartelasRef.current = simulatedBotCartelas;
+  }, [simulatedBotCartelas]);
+
+  // Frontend-only bot activity preview for waiting room cards.
+  // This does not emit socket events or alter real ownership state.
+  useEffect(() => {
+    const timers = simulatedBotTimersRef.current;
+
+    if (room?.status !== "waiting") {
+      setSimulatedBotCartelas([]);
+      for (const timeoutId of timers.values()) {
+        clearTimeout(timeoutId);
+      }
+      timers.clear();
+      return;
+    }
+
+    const removeSimulatedCard = (cardNum) => {
+      setSimulatedBotCartelas((prev) => prev.filter((n) => n !== cardNum));
+      const timeoutId = timers.get(cardNum);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      timers.delete(cardNum);
+    };
+
+    const addSimulatedCard = () => {
+      const occupied = new Set(
+        Object.keys(takenCartelasRef.current || {}).map((n) => Number(n)),
+      );
+      selectedCartelas.forEach((n) => occupied.add(Number(n)));
+      simulatedBotCartelasRef.current.forEach((n) => occupied.add(Number(n)));
+
+      const available = [];
+      for (let n = 1; n <= 400; n += 1) {
+        if (!occupied.has(n)) {
+          available.push(n);
+        }
+      }
+      if (available.length === 0) return;
+
+      const randomIndex = Math.floor(Math.random() * available.length);
+      const picked = available[randomIndex];
+      if (!picked) return;
+
+      setSimulatedBotCartelas((prev) =>
+        prev.includes(picked) ? prev : [...prev, picked],
+      );
+
+      const timeoutId = setTimeout(() => {
+        removeSimulatedCard(picked);
+      }, 2000);
+      timers.set(picked, timeoutId);
+    };
+
+    const interval = setInterval(addSimulatedCard, 650);
+    const startup = setTimeout(addSimulatedCard, 300);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(startup);
+      for (const timeoutId of timers.values()) {
+        clearTimeout(timeoutId);
+      }
+      timers.clear();
+    };
+  }, [room?.status, selectedCartelas]);
 
   useEffect(() => {
     winCutPercentRef.current = winCutPercent;
@@ -558,13 +629,7 @@ export default function WaitingRoom() {
         return newCartelas;
       });
     } else {
-      // Select: check if available, add to selection, and emit socket event
-      // Enforce max 4 cartelas per player on UI
-      if (selectedCartelas.length >= 4) {
-        setSelectionError("You can select up to 4 cartelas");
-        setTimeout(() => setSelectionError(null), 3000);
-        return;
-      }
+      // Select: enforce single-card choice; selecting another card changes choice
       if (isTakenByOther) {
         console.warn(`Cartela #${num} already taken by`, takenCartelas[num]);
         setSelectionError(
@@ -576,6 +641,16 @@ export default function WaitingRoom() {
 
       console.log(`Selecting cartela #${num}`);
 
+      // If user already had another card selected, release it first.
+      const previousCardId = selectedCartelas[0];
+      if (previousCardId && previousCardId !== num) {
+        socket.emit("deselect-cartela", {
+          roomId: gameRoomId,
+          userId,
+          cartelaId: previousCardId,
+        });
+      }
+
       // Emit selection to server
       socket.emit("select-cartela", {
         roomId: gameRoomId,
@@ -584,11 +659,7 @@ export default function WaitingRoom() {
       });
 
       // Optimistically update UI
-      setSelectedCartelas((prev) => {
-        const newCartelas = [...prev, num].sort((a, b) => a - b);
-        console.log("After select, selectedCartelas:", newCartelas);
-        return newCartelas;
-      });
+      setSelectedCartelas([num]);
     }
   };
 
@@ -704,6 +775,11 @@ export default function WaitingRoom() {
                     takenCartelas[num] && takenCartelas[num].userId !== userId;
                   const isTakenByMe =
                     takenCartelas[num] && takenCartelas[num].userId === userId;
+                  const isSimulatedBotActive =
+                    simulatedBotCartelasSet.has(num) &&
+                    !isSelected &&
+                    !isTakenByMe &&
+                    !isTakenByOther;
 
                   return (
                     <button
@@ -720,8 +796,10 @@ export default function WaitingRoom() {
                           isSelected || isTakenByMe
                             ? UI_COLORS.selectedCard
                             : isTakenByOther
-                              ? UI_COLORS.selectedCard
-                              : UI_COLORS.availableCard,
+                              ? UI_COLORS.takenByOtherCard
+                              : isSimulatedBotActive
+                                ? UI_COLORS.takenByOtherCard
+                                : UI_COLORS.availableCard,
                         boxShadow:
                           isSelected || isTakenByMe || isTakenByOther
                             ? "inset 0 0 0 2px #ffb266"
@@ -734,7 +812,9 @@ export default function WaitingRoom() {
                             ? `Selected by ${takenCartelas[num].userName}`
                             : isTakenByMe
                               ? "Selected by you"
-                              : "Click to select"
+                              : isSimulatedBotActive
+                                ? "Bot is previewing this card"
+                                : "Click to select"
                       }
                     >
                       {num}

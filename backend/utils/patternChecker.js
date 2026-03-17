@@ -119,25 +119,6 @@ export function checkWinningPattern(
     outerSquareCells.push(corner);
   }
 
-  // Check inner square pattern (4 corners of 3x3 center area only)
-  const innerSquareCells = [];
-  let innerSquareWin = true;
-
-  const innerCorners = [
-    { row: 1, col: 1 }, // Top-left of inner area
-    { row: 1, col: 3 }, // Top-right of inner area
-    { row: 3, col: 1 }, // Bottom-left of inner area
-    { row: 3, col: 3 }, // Bottom-right of inner area
-  ];
-
-  for (const corner of innerCorners) {
-    if (!isMarked(corner.row, corner.col)) {
-      innerSquareWin = false;
-      break;
-    }
-    innerSquareCells.push(corner);
-  }
-
   // Helper function to check if current number is part of winning pattern
   const checkCurrentNumberInPattern = (winningCells) => {
     if (!currentNumber) return "win";
@@ -174,10 +155,6 @@ export function checkWinningPattern(
         completedPatterns++;
         winningCells.push(...winningDiagonals.flat());
       }
-      if (innerSquareWin) {
-        completedPatterns++;
-        winningCells.push(...innerSquareCells);
-      }
       if (outerSquareWin) {
         completedPatterns++;
         winningCells.push(...outerSquareCells);
@@ -213,10 +190,6 @@ export function checkWinningPattern(
       completedPatterns += winningDiagonals.length;
       patternCells.push(...winningDiagonals);
 
-      if (innerSquareWin) {
-        completedPatterns++;
-        patternCells.push(innerSquareCells);
-      }
       if (outerSquareWin) {
         completedPatterns++;
         patternCells.push(outerSquareCells);
@@ -256,10 +229,6 @@ export function checkWinningPattern(
       completedPatterns += winningDiagonals.length;
       patternCells.push(...winningDiagonals);
 
-      if (innerSquareWin) {
-        completedPatterns++;
-        patternCells.push(innerSquareCells);
-      }
       if (outerSquareWin) {
         completedPatterns++;
         patternCells.push(outerSquareCells);
@@ -308,16 +277,6 @@ export function checkWinningPattern(
       return {
         isWinner: outerSquareWin,
         winningCells: outerSquareCells,
-        status,
-      };
-    }
-    case "innerSquare": {
-      const status = innerSquareWin
-        ? checkCurrentNumberInPattern(innerSquareCells)
-        : "lose";
-      return {
-        isWinner: innerSquareWin,
-        winningCells: innerSquareCells,
         status,
       };
     }

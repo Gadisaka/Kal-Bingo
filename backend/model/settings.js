@@ -46,6 +46,21 @@ const settingsSchema = new mongoose.Schema(
     withdrawal: {
       minAmount: { type: Number, default: 50 },
       maxAmount: { type: Number, default: 50000 },
+      banks: {
+        type: [
+          {
+            id: { type: String, required: true },
+            label: { type: String, required: true },
+            enabled: { type: Boolean, default: true },
+          },
+        ],
+        default: [
+          { id: "telebirr", label: "Telebirr", enabled: true },
+          { id: "cbe", label: "CBE", enabled: true },
+          { id: "awash", label: "Awash", enabled: true },
+          { id: "abyssinia", label: "Abyssinia", enabled: true },
+        ],
+      },
     },
     // Referral System Settings
     referral: {

@@ -15,6 +15,7 @@ const gameHistorySchema = new mongoose.Schema(
   {
     // Allow storing either a user id or a richer winner object for system games
     winner: { type: mongoose.Schema.Types.Mixed, default: null },
+    winners: { type: mongoose.Schema.Types.Mixed, default: [] },
     // System/user players array snapshot at the time of the event
     players: { type: mongoose.Schema.Types.Mixed, required: true },
     gameStatus: {

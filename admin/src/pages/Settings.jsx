@@ -7,6 +7,7 @@ import {
   Loader2,
   Phone,
   User,
+  Landmark,
 } from "lucide-react";
 import useSettingsStore from "../store/settingsStore";
 import axios from "axios";
@@ -51,6 +52,9 @@ const Settings = () => {
     saveWelcomeBonusSettings,
     updateReferralField,
     saveReferralSettings,
+    updateWithdrawalField,
+    updateWithdrawalBank,
+    saveWithdrawalSettings,
     addStake,
     removeStake,
     clearError,
@@ -76,6 +80,17 @@ const Settings = () => {
     enabled: settings?.referral?.enabled ?? true,
     rewardAmount: settings?.referral?.rewardAmount ?? 50,
     maxReferrals: settings?.referral?.maxReferrals ?? 0,
+  };
+
+  const withdrawalSettings = {
+    minAmount: settings?.withdrawal?.minAmount ?? 50,
+    maxAmount: settings?.withdrawal?.maxAmount ?? 50000,
+    banks: settings?.withdrawal?.banks ?? [
+      { id: "telebirr", label: "Telebirr", enabled: true },
+      { id: "cbe", label: "CBE", enabled: true },
+      { id: "awash", label: "Awash", enabled: true },
+      { id: "abyssinia", label: "Abyssinia", enabled: true },
+    ],
   };
 
   const userGamesSettings = settings?.userGames || {
@@ -210,6 +225,7 @@ const Settings = () => {
     { id: "welcomeBonus", label: "Welcome Bonus" },
     { id: "referral", label: "Referral" },
     { id: "deposit", label: "Deposit" },
+    { id: "withdrawal", label: "Withdrawal" },
   ];
 
   if (loading) {
@@ -260,7 +276,7 @@ const Settings = () => {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`
-                  w-1/4 py-4 px-1 text-center border-b-2 font-medium text-sm
+                  flex-1 py-4 px-1 text-center border-b-2 font-medium text-sm
                   ${
                     activeTab === tab.id
                       ? "border-primary text-primary"
@@ -944,6 +960,85 @@ const Settings = () => {
             </div>
           )}
 
+          {activeTab === "withdrawal" && (
+            <div className="space-y-8">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">
+                  Withdrawal Limits
+                </h3>
+                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Minimum Withdrawal (Birr)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={withdrawalSettings.minAmount}
+                        onChange={(e) =>
+                          updateWithdrawalField("minAmount", Number(e.target.value))
+                        }
+                        className="w-full rounded-lg border-gray-300 border p-2 focus:ring-primary focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Maximum Withdrawal (Birr)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={withdrawalSettings.maxAmount}
+                        onChange={(e) =>
+                          updateWithdrawalField("maxAmount", Number(e.target.value))
+                        }
+                        className="w-full rounded-lg border-gray-300 border p-2 focus:ring-primary focus:border-primary"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">
+                  Bank Methods
+                </h3>
+                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200 space-y-3">
+                  {withdrawalSettings.banks.map((bank) => (
+                    <div
+                      key={bank.id}
+                      className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-between gap-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-slate-200 rounded-lg flex items-center justify-center">
+                          <Landmark className="w-4 h-4 text-slate-700" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{bank.label}</p>
+                          <p className="text-xs text-gray-500">ID: {bank.id}</p>
+                        </div>
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={!!bank.enabled}
+                          onChange={(e) =>
+                            updateWithdrawalBank(bank.id, {
+                              enabled: e.target.checked,
+                            })
+                          }
+                          className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
+                        />
+                        Enabled
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* {activeTab === "bonus" && (
             <div className="text-center py-12 text-gray-500">
               <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-300" />
@@ -965,6 +1060,8 @@ const Settings = () => {
                   ? saveReferralSettings
                   : activeTab === "deposit"
                   ? saveDepositSettings
+                  : activeTab === "withdrawal"
+                  ? saveWithdrawalSettings
                   : () => {}
               }
               disabled={saving || depositSaving}

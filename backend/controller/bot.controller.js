@@ -1,6 +1,66 @@
-import BotGameConfig from "../model/botGameConfig.js";
+import BotGameConfig, {
+  BOT_TIME_WINDOWS,
+  buildDefaultTimeWindowBots,
+} from "../model/botGameConfig.js";
 import User from "../model/user.js";
 import Wallet from "../model/wallet.js";
+
+const MAX_BOTS_PER_WINDOW = 100;
+
+function normalizeWindowRanges(timeWindowBots, fallbackRanges) {
+  const allowedKeys = new Set(BOT_TIME_WINDOWS.map((w) => w.key));
+  if (!timeWindowBots || typeof timeWindowBots !== "object") {
+    return { ok: true, normalized: fallbackRanges };
+  }
+
+  const unknownKey = Object.keys(timeWindowBots).find(
+    (key) => !allowedKeys.has(key)
+  );
+  if (unknownKey) {
+    return { ok: false, message: `Unknown time window key: ${unknownKey}` };
+  }
+
+  const normalized = {};
+  for (const windowDef of BOT_TIME_WINDOWS) {
+    const incoming = timeWindowBots[windowDef.key] || {};
+    const fallback = fallbackRanges[windowDef.key] || {
+      min_bots: 0,
+      max_bots: 0,
+    };
+    const minBots =
+      incoming.min_bots !== undefined ? Number(incoming.min_bots) : fallback.min_bots;
+    const maxBots =
+      incoming.max_bots !== undefined ? Number(incoming.max_bots) : fallback.max_bots;
+
+    if (!Number.isInteger(minBots) || !Number.isInteger(maxBots)) {
+      return {
+        ok: false,
+        message: `${windowDef.key} min_bots and max_bots must be integers`,
+      };
+    }
+    if (
+      minBots < 0 ||
+      maxBots < 0 ||
+      minBots > MAX_BOTS_PER_WINDOW ||
+      maxBots > MAX_BOTS_PER_WINDOW
+    ) {
+      return {
+        ok: false,
+        message: `${windowDef.key} min_bots/max_bots must be between 0 and ${MAX_BOTS_PER_WINDOW}`,
+      };
+    }
+    if (maxBots < minBots) {
+      return {
+        ok: false,
+        message: `${windowDef.key} max_bots must be greater than or equal to min_bots`,
+      };
+    }
+
+    normalized[windowDef.key] = { min_bots: minBots, max_bots: maxBots };
+  }
+
+  return { ok: true, normalized };
+}
 
 /**
  * Get all bot game configurations
@@ -27,6 +87,7 @@ export const getAllBotConfigs = async (req, res) => {
     res.json({
       success: true,
       configs,
+      fixed_windows: BOT_TIME_WINDOWS,
       stats: {
         totalBots,
         activeBots,
@@ -72,6 +133,7 @@ export const getBotConfigByStake = async (req, res) => {
     res.json({
       success: true,
       config,
+      fixed_windows: BOT_TIME_WINDOWS,
     });
   } catch (error) {
     console.error("Error fetching bot config:", error);
@@ -104,6 +166,7 @@ export const upsertBotConfig = async (req, res) => {
       is_active,
       join_delay_min,
       join_delay_max,
+      time_window_bots,
       notes,
     } = req.body;
 
@@ -115,17 +178,23 @@ export const upsertBotConfig = async (req, res) => {
       });
     }
 
-    if (min_bots !== undefined && (min_bots < 0 || min_bots > 50)) {
+    if (
+      min_bots !== undefined &&
+      (min_bots < 0 || min_bots > MAX_BOTS_PER_WINDOW)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "min_bots must be between 0 and 50",
+        message: `min_bots must be between 0 and ${MAX_BOTS_PER_WINDOW}`,
       });
     }
 
-    if (max_bots !== undefined && (max_bots < 0 || max_bots > 50)) {
+    if (
+      max_bots !== undefined &&
+      (max_bots < 0 || max_bots > MAX_BOTS_PER_WINDOW)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "max_bots must be between 0 and 50",
+        message: `max_bots must be between 0 and ${MAX_BOTS_PER_WINDOW}`,
       });
     }
 
@@ -150,6 +219,10 @@ export const upsertBotConfig = async (req, res) => {
       });
     }
 
+    const existingConfig = await BotGameConfig.findOne({
+      stake_amount: parseInt(stake_amount, 10),
+    });
+
     // Upsert the config
     const updateData = {};
     if (min_bots !== undefined) updateData.min_bots = min_bots;
@@ -161,6 +234,35 @@ export const upsertBotConfig = async (req, res) => {
     if (join_delay_max !== undefined)
       updateData.join_delay_max = join_delay_max;
     if (notes !== undefined) updateData.notes = notes;
+
+    const fallbackMin =
+      min_bots !== undefined
+        ? min_bots
+        : existingConfig?.min_bots !== undefined
+          ? existingConfig.min_bots
+          : 2;
+    const fallbackMax =
+      max_bots !== undefined
+        ? max_bots
+        : existingConfig?.max_bots !== undefined
+          ? existingConfig.max_bots
+          : 5;
+
+    const fallbackRanges =
+      existingConfig?.time_window_bots ||
+      buildDefaultTimeWindowBots(fallbackMin, fallbackMax);
+
+    const normalizedWindowRanges = normalizeWindowRanges(
+      time_window_bots,
+      fallbackRanges
+    );
+    if (!normalizedWindowRanges.ok) {
+      return res.status(400).json({
+        success: false,
+        message: normalizedWindowRanges.message,
+      });
+    }
+    updateData.time_window_bots = normalizedWindowRanges.normalized;
 
     const config = await BotGameConfig.findOneAndUpdate(
       { stake_amount: parseInt(stake_amount, 10) },

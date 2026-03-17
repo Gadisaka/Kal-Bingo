@@ -86,6 +86,13 @@ export const updateSettings = async (req, res) => {
         };
         settings.markModified("referral");
       }
+      if (req.body.withdrawal) {
+        settings.withdrawal = {
+          ...settings.withdrawal,
+          ...req.body.withdrawal,
+        };
+        settings.markModified("withdrawal");
+      }
 
       await settings.save();
       console.log(

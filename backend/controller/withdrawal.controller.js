@@ -10,12 +10,23 @@ import Settings from "../model/settings.js";
 export const getWithdrawalSettings = async (req, res) => {
   try {
     const settings = await Settings.getSettings();
+    const defaultBanks = [
+      { id: "telebirr", label: "Telebirr", enabled: true },
+      { id: "cbe", label: "CBE", enabled: true },
+      { id: "awash", label: "Awash", enabled: true },
+      { id: "abyssinia", label: "Abyssinia", enabled: true },
+    ];
 
     res.json({
       success: true,
       settings: {
         minAmount: settings.withdrawal?.minAmount || 50,
         maxAmount: settings.withdrawal?.maxAmount || 50000,
+        banks:
+          Array.isArray(settings.withdrawal?.banks) &&
+          settings.withdrawal.banks.length > 0
+            ? settings.withdrawal.banks
+            : defaultBanks,
       },
     });
   } catch (error) {
@@ -525,7 +536,7 @@ export const rejectWithdrawal = async (req, res) => {
  */
 export const updateWithdrawalSettings = async (req, res) => {
   try {
-    const { minAmount, maxAmount } = req.body;
+    const { minAmount, maxAmount, banks } = req.body;
 
     let settings = await Settings.findOne();
     if (!settings) {
@@ -539,6 +550,9 @@ export const updateWithdrawalSettings = async (req, res) => {
     }
     if (maxAmount !== undefined) {
       settings.withdrawal.maxAmount = maxAmount;
+    }
+    if (banks !== undefined) {
+      settings.withdrawal.banks = Array.isArray(banks) ? banks : [];
     }
 
     await settings.save();

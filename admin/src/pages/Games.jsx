@@ -109,6 +109,18 @@ const Games = () => {
     return `Br ${amount.toLocaleString()}`;
   };
 
+  const getWinnerLabel = (game) => {
+    const winners = Array.isArray(game?.winners)
+      ? game.winners
+      : game?.winner
+        ? [game.winner]
+        : [];
+    if (winners.length === 0) return "-";
+    return winners
+      .map((w) => w?.userName || w?.name || w?.userId || "Unknown")
+      .join(", ");
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -251,7 +263,7 @@ const Games = () => {
                         {game.prize ? formatCurrency(game.prize) : "-"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {game.winner?.userName || game.winner?.name || "-"}
+                        {getWinnerLabel(game)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {game.hostName ||

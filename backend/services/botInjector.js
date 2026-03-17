@@ -1,4 +1,7 @@
-import BotGameConfig from "../model/botGameConfig.js";
+import BotGameConfig, {
+  BOT_TIME_WINDOWS,
+  buildDefaultTimeWindowBots,
+} from "../model/botGameConfig.js";
 import User from "../model/user.js";
 import {
   getSystemRooms,
@@ -30,6 +33,61 @@ const botsInGames = new Set();
 // Store game preparations per room (bot win decision, pre-solved cards)
 // This is exported so roomHandlers can use it for human auto-assign
 export const roomGamePreparations = new Map();
+
+const BOT_SCHEDULE_TIMEZONE = "Africa/Addis_Ababa";
+
+function getAddisHour(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: BOT_SCHEDULE_TIMEZONE,
+    hour12: false,
+    hour: "2-digit",
+  }).formatToParts(date);
+  const hourPart = parts.find((part) => part.type === "hour")?.value;
+  const hour = Number(hourPart);
+  return Number.isInteger(hour) ? hour : 0;
+}
+
+function normalizeTimeWindowBots(config) {
+  const fallback = buildDefaultTimeWindowBots(config.min_bots, config.max_bots);
+  const source = config?.time_window_bots || {};
+
+  const normalized = {};
+  for (const windowDef of BOT_TIME_WINDOWS) {
+    const range = source[windowDef.key] || {};
+    const minBots = Number.isInteger(range.min_bots)
+      ? range.min_bots
+      : fallback[windowDef.key].min_bots;
+    const maxBots = Number.isInteger(range.max_bots)
+      ? range.max_bots
+      : fallback[windowDef.key].max_bots;
+
+    normalized[windowDef.key] = {
+      min_bots: minBots,
+      max_bots: Math.max(minBots, maxBots),
+    };
+  }
+
+  return normalized;
+}
+
+function getCurrentWindowRange(config, date = new Date()) {
+  const hour = getAddisHour(date);
+  const activeWindow =
+    BOT_TIME_WINDOWS.find(
+      (windowDef) =>
+        hour >= windowDef.startHour && hour <= windowDef.endHour
+    ) || BOT_TIME_WINDOWS[0];
+
+  const normalized = normalizeTimeWindowBots(config);
+  const range = normalized[activeWindow.key];
+
+  return {
+    windowKey: activeWindow.key,
+    windowLabel: activeWindow.label,
+    minBots: range.min_bots,
+    maxBots: range.max_bots,
+  };
+}
 
 /**
  * Get available bots that are not currently in any game
@@ -270,9 +328,11 @@ async function startBotInjection(io, room, config) {
   }
 
   try {
-    // Determine number of bots to inject
+    // Determine number of bots to inject from active fixed Addis window.
+    const currentWindow = getCurrentWindowRange(config);
     const botCount = Math.floor(
-      Math.random() * (config.max_bots - config.min_bots + 1) + config.min_bots
+      Math.random() * (currentWindow.maxBots - currentWindow.minBots + 1) +
+        currentWindow.minBots
     );
 
     if (botCount === 0) {
@@ -309,7 +369,7 @@ async function startBotInjection(io, room, config) {
     );
 
     console.log(
-      `🤖 [BotInjector] Scheduling ${bots.length} bots for room ${roomId} (stake: ${room.betAmount})`
+      `🤖 [BotInjector] Scheduling ${bots.length} bots for room ${roomId} (stake: ${room.betAmount}, window: ${currentWindow.windowKey} ${currentWindow.windowLabel}, range: ${currentWindow.minBots}-${currentWindow.maxBots}, tz: ${BOT_SCHEDULE_TIMEZONE})`
     );
 
     // Store timeout references for cleanup

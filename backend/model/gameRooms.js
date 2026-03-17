@@ -51,6 +51,10 @@ const gameRoomSchema = new mongoose.Schema(
       },
       default: null,
     },
+    winners: {
+      type: [mongoose.Schema.Types.Mixed],
+      default: [],
+    },
   },
   {
     timestamps: true,

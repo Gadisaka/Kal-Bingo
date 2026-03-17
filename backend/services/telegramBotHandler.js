@@ -1,7 +1,11 @@
 import axios from "axios";
 import crypto from "crypto";
+import mongoose from "mongoose";
 import AuthSession from "../model/authSession.js";
 import User from "../model/user.js";
+import Wallet from "../model/wallet.js";
+import Withdrawal from "../model/withdrawal.js";
+import WalletTransaction from "../model/walletTransaction.js";
 import Settings from "../model/settings.js";
 import { applyReferral, generateReferralLinks } from "../utils/referral.js";
 
@@ -14,6 +18,62 @@ const getAuthBotUsername = () =>
   process.env.AUTH_BOT_USERNAME ||
   process.env.NEXT_PUBLIC_BOT_USERNAME ||
   process.env.VITE_BOT_USERNAME;
+
+const withdrawFlowByTelegramId = new Map();
+const WITHDRAW_BANKS = [
+  { id: "telebirr", label: "Telebirr" },
+  { id: "cbe", label: "CBE" },
+  { id: "awash", label: "Awash" },
+  { id: "abyssinia", label: "Abyssinia" },
+];
+
+const INSTRUCTIONS_TEXT = `የቢንጎ ጨዋታ ህጎች
+
+መጫወቻ ካርድ
+
+ጨዋታውን ለመጀመር ከሚመጣልን ከ1-400 የመጫወቻ ካርድ ውስጥ አንዱን እንመርጣለን
+የመጫወቻ ካርዱ ላይ በቀይ ቀለም የተመረጡ ቁጥሮች የሚያሳዩት መጫወቻ ካርድ በሌላ ተጫዋች መመረጡን ነው
+የመጫወቻ ካርድ ስንነካው ከታች በኩል ካርድ ቁጥሩ የሚይዘዉን መጫወቻ ካርድ ያሳየናል
+ወደ ጨዋታው ለመግባት የምንፈልገዉን ካርድ ከመረጥን ለምዝገባ የተሰጠው ሰኮንድ ዜሮ ሲሆን
+ቀጥታ ወደ ጨዋታ ያስገባናል
+
+ጨዋታ
+
+ወደ ጨዋታው ስንገባ በመረጥነው የካርድ ቁጥር መሰረት የመጫወቻ ካርድ እናገኛለን
+ከላይ በቀኝ በኩል ጨዋታው ለመጀመር ያለዉን ቀሪ ሴኮንድ መቁጠር ይጀምራል
+ጨዋታው ሲጀምር የተለያዪ ቁጥሮች ከ1 እስከ 75 መጥራት ይጀምራል
+የሚጠራው ቁጥር የኛ መጫወቻ ካርድ ዉስጥ ካለ የተጠራዉን ቁጥር ክሊክ በማረግ መምረጥ እንችላለን
+የመረጥነዉን ቁጥር ማጥፋት ከፈለግን መልሰን እራሱን ቁጠር ክሊክ በማረግ ማጥፋት እንችላለን
+
+አሸናፊ
+ቁጥሮቹ ሲጠሩ ከመጫወቻ ካርዳችን ላይ እየመረጥን ወደጎን ወይም ወደታች ወይም ወደሁለቱም አግዳሚ ወይም አራቱን ማእዘናት ከመረጥን ወዲአዉኑ ከታች በኩል bingo የሚለዉን በመንካት ማሸነፍ እንችላለን
+ወደጎን ወይም ወደታች ወይም ወደ ሁለቱም አግዳሚ ወይም አራቱን ማእዘናት ሳይጠሩ bingo የሚለዉን ክሊክ ካደረግን ከጨዋታው እንታገዳለን
+ሁለት ወይም ከዚያ በላይ ተጫዋቾች እኩል ቢያሸንፉ ደራሹ ለ ቁጥራቸው ይካፈላል።`;
+
+const getMainMenuText = () =>
+  `🎮 <b>Kal Bingo Main Menu</b>
+
+Use these commands:
+/start - Main Menu
+/play - Play Bingo
+/balance - Check Balance
+/deposit - Deposit
+/withdraw - Withdraw
+/invite - Share and Earn
+/instructions - How to Play
+/contact - Get help
+/join - Our community`;
+
+const getMainMenuKeyboard = (frontendUrl) => ({
+  inline_keyboard: [
+    [{ text: "🎮 Play Bingo", web_app: { url: frontendUrl } }],
+    [
+      { text: "💰 Deposit", web_app: { url: `${frontendUrl}?action=deposit` } },
+      { text: "💸 Withdraw", web_app: { url: `${frontendUrl}?action=withdraw` } },
+    ],
+    [{ text: "👥 Join Community", url: "https://t.me/kalbingo5" }],
+  ],
+});
 
 /**
  * Send a message via the auth bot
@@ -64,6 +124,38 @@ export const handleCallbackQuery = async (callbackQuery) => {
   const lastName = from.last_name || "";
   const username = from.username || null;
   const phoneNumber = from.phone_number || null;
+
+  // Parse callback data: "withdraw_method_<bankId>"
+  const withdrawMethodMatch = data.match(/^withdraw_method_([a-zA-Z0-9_]+)$/);
+  if (withdrawMethodMatch) {
+    const [, bankId] = withdrawMethodMatch;
+    const flow = withdrawFlowByTelegramId.get(telegramId);
+    if (!flow || flow.step !== "awaiting_bank_method") {
+      await sendBotMessage(
+        chatId,
+        "⚠️ No active withdrawal flow. Send /withdraw to start again.",
+      );
+      return;
+    }
+
+    const method = WITHDRAW_BANKS.find((b) => b.id === bankId);
+    if (!method) {
+      await sendBotMessage(chatId, "⚠️ Invalid withdrawal method.");
+      return;
+    }
+
+    withdrawFlowByTelegramId.set(telegramId, {
+      ...flow,
+      step: "awaiting_account_identifier",
+      bankMethod: method.label,
+    });
+
+    await sendBotMessage(
+      chatId,
+      `You selected ${method.label}.\n\nPlease enter account/phone number:`,
+    );
+    return;
+  }
 
   // Parse callback data: "auth_<authCode>_<action>"
   const match = data.match(/^auth_([a-zA-Z0-9]+)_(authorize|cancel)$/);
@@ -170,28 +262,13 @@ export const handleStartCommand = async (message) => {
     const parts = text.split(" ");
     if (parts.length < 2) {
       console.log("⚠️ /start command without parameter");
-      // Show welcome message with Mini App button
-      const miniAppName = process.env.MINI_APP_NAME || "SheqayGames";
-      const botUsername = getBotUsername() || "SheqelaGamesAuthBot";
-      const cleanBotUsername = botUsername.replace("@", "").trim();
-      const miniAppUrl =
-        process.env.FRONTEND_URL ||
-        `https://t.me/${cleanBotUsername}/${miniAppName}`;
-
-      const keyboard = {
-        inline_keyboard: [
-          [
-            {
-              text: "🎮 Play Bingo",
-              web_app: { url: miniAppUrl },
-            },
-          ],
-        ],
-      };
+      const frontendUrl = process.env.FRONTEND_URL || "https://sheqaygames.com";
+      const keyboard = getMainMenuKeyboard(frontendUrl);
 
       await sendBotMessage(
         chatId,
-        "👋 Welcome to <b>Kal Bingo</b>!\n\n🎯 Play Bingo and win prizes!\n",
+        getMainMenuText(),
+        { reply_markup: keyboard },
       );
       return;
     }
@@ -478,43 +555,326 @@ const handleDepositCommand = async (message) => {
 };
 
 /**
+ * Handle /balance command — return current wallet balance
+ */
+const handleBalanceCommand = async (message) => {
+  const chatId = message.chat.id;
+  const telegramId = String(message.from.id);
+  const frontendUrl = process.env.FRONTEND_URL || "https://sheqaygames.com";
+
+  try {
+    const user = await User.findOne({ telegramId, isActive: true }).lean();
+    if (!user) {
+      await sendBotMessage(
+        chatId,
+        "⚠️ You need an account before checking your balance.\n\nUse /play to open the game first.",
+        { reply_markup: getMainMenuKeyboard(frontendUrl) },
+      );
+      return;
+    }
+
+    const wallet = await Wallet.findOne({ user: user._id }).lean();
+    const balance = Number(wallet?.balance || 0);
+    const bonus = Number(wallet?.bonus || 0);
+    const total = balance + bonus;
+
+    await sendBotMessage(
+      chatId,
+      `💳 <b>Your Balance</b>\n\nMain: ${Math.trunc(balance).toLocaleString()} Br\nBonus: ${Math.trunc(bonus).toLocaleString()} Br\nTotal: ${Math.trunc(total).toLocaleString()} Br`,
+    );
+  } catch (err) {
+    console.error("[/balance] Error:", err.message);
+    await sendBotMessage(
+      chatId,
+      "❌ Could not fetch your balance right now. Please try again.",
+    );
+  }
+};
+
+/**
  * Handle /withdraw command — open the wallet withdrawal flow
  */
 const handleWithdrawCommand = async (message) => {
   const chatId = message.chat.id;
-  const frontendUrl = process.env.FRONTEND_URL || "https://sheqaygames.com";
+  const telegramId = String(message.from.id);
 
-  const keyboard = {
-    inline_keyboard: [
-      [
-        {
-          text: "💸 Open Wallet & Withdraw",
-          web_app: { url: `${frontendUrl}?action=withdraw` },
-        },
-      ],
-    ],
-  };
+  try {
+    const user = await User.findOne({ telegramId, isActive: true }).lean();
+    if (!user) {
+      await sendBotMessage(
+        chatId,
+        "⚠️ You need an account before using withdrawals.\n\nUse /play to open the game first.",
+      );
+      return;
+    }
 
+    const hasPending = await Withdrawal.hasPendingWithdrawal(user._id);
+    if (hasPending) {
+      await sendBotMessage(
+        chatId,
+        "⏳ You already have a pending withdrawal request. Please wait for it to be processed.",
+      );
+      return;
+    }
+
+    const settings = await Settings.getSettings();
+    const minAmount = Number(settings.withdrawal?.minAmount || 50);
+    const maxAmount = Number(settings.withdrawal?.maxAmount || 50000);
+
+    withdrawFlowByTelegramId.set(telegramId, {
+      step: "awaiting_amount",
+      chatId,
+      userId: String(user._id),
+      minAmount,
+      maxAmount,
+    });
+
+    await sendBotMessage(
+      chatId,
+      `💸 <b>Withdraw</b>\n\nPlease enter the amount you wish to withdraw.\n\nMinimum: ${Math.trunc(minAmount)}\nMaximum: ${Math.trunc(maxAmount)}\n\nSend /cancel to stop.`,
+    );
+  } catch (err) {
+    console.error("[/withdraw] Error:", err.message);
+    await sendBotMessage(
+      chatId,
+      "❌ Could not start withdrawal right now. Please try again.",
+    );
+  }
+};
+
+/**
+ * Handle /instructions command — show how to play
+ */
+const handleInstructionsCommand = async (message) => {
+  const chatId = message.chat.id;
+  await sendBotMessage(chatId, INSTRUCTIONS_TEXT);
+};
+
+/**
+ * Handle /contact command — show support info
+ */
+const handleContactCommand = async (message) => {
+  const chatId = message.chat.id;
   await sendBotMessage(
     chatId,
-    "💸 <b>Withdraw Funds</b>\n\nClick the button below to open your wallet and request a withdrawal:",
-    { reply_markup: keyboard },
+    "👉 @Kalbingosupport1\n\n👉 @kalbingosupport2",
   );
 };
 
 /**
- * Handle /support command — show support info
+ * Handle /join command — show community link
  */
-const handleSupportCommand = async (message) => {
+const handleJoinCommand = async (message) => {
   const chatId = message.chat.id;
+  await sendBotMessage(chatId, "Our community\n\n👉 https://t.me/kalbingo5");
+};
 
-  await sendBotMessage(
-    chatId,
-    "🆘 <b>Support</b>\n\n" +
-      "Need help? Contact our support team:\n\n" +
-      "📩 Send us a message describing your issue and we'll get back to you as soon as possible.\n\n" +
-      "⏰ Support hours: 24/7",
-  );
+const createTelegramWithdrawalRequest = async ({
+  userId,
+  amount,
+  bankMethod,
+  accountIdentifier,
+  accountName,
+  chatId,
+}) => {
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+
+    const hasPending = await Withdrawal.hasPendingWithdrawal(userId);
+    if (hasPending) {
+      throw new Error("You already have a pending withdrawal request.");
+    }
+
+    const wallet = await Wallet.findOne({ user: userId }).session(session);
+    if (!wallet || Number(wallet.balance || 0) < amount) {
+      throw new Error("Insufficient balance");
+    }
+
+    const updatedWallet = await Wallet.findOneAndUpdate(
+      { user: userId, balance: { $gte: amount } },
+      { $inc: { balance: -amount } },
+      { new: true, session },
+    );
+    if (!updatedWallet) {
+      throw new Error("Insufficient balance");
+    }
+
+    const withdrawal = await Withdrawal.create(
+      [
+        {
+          user: userId,
+          amount,
+          telebirrAccount: {
+            // Reuse existing schema; store account identifier and account name
+            phoneNumber: accountIdentifier,
+            accountName,
+          },
+          status: "pending",
+          meta: {
+            requestedAt: new Date(),
+            source: "telegram_bot",
+            bankMethod,
+            chatId: String(chatId),
+            balanceBeforeRequest: Number(wallet.balance || 0),
+          },
+        },
+      ],
+      { session },
+    );
+
+    await WalletTransaction.create(
+      [
+        {
+          user: userId,
+          amount: -amount,
+          type: "WITHDRAWAL",
+          balanceAfter: Number(updatedWallet.balance || 0),
+          meta: {
+            withdrawalId: withdrawal[0]._id.toString(),
+            status: "pending",
+            source: "telegram_bot",
+            bankMethod,
+            accountIdentifier,
+          },
+        },
+      ],
+      { session },
+    );
+
+    await session.commitTransaction();
+
+    return {
+      success: true,
+      withdrawalId: withdrawal[0]._id,
+      remainingBalance: Number(updatedWallet.balance || 0),
+    };
+  } catch (error) {
+    try {
+      await session.abortTransaction();
+    } catch {
+      // ignore
+    }
+    return { success: false, error: error.message || "Failed to create withdrawal" };
+  } finally {
+    session.endSession();
+  }
+};
+
+const handleWithdrawFlowText = async (message, text) => {
+  const telegramId = String(message.from.id);
+  const chatId = message.chat.id;
+  const flow = withdrawFlowByTelegramId.get(telegramId);
+  if (!flow) return false;
+
+  if (text.startsWith("/cancel")) {
+    withdrawFlowByTelegramId.delete(telegramId);
+    await sendBotMessage(chatId, "❌ Withdrawal cancelled.");
+    return true;
+  }
+
+  if (flow.step === "awaiting_amount") {
+    const amount = Math.trunc(Number(text));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      await sendBotMessage(chatId, "Please enter a valid amount.");
+      return true;
+    }
+
+    if (amount < flow.minAmount) {
+      await sendBotMessage(
+        chatId,
+        `Withdraw amount must be greater than or equal to ${Math.trunc(flow.minAmount)}`,
+      );
+      return true;
+    }
+
+    if (amount > flow.maxAmount) {
+      await sendBotMessage(
+        chatId,
+        `Withdraw amount must be less than or equal to ${Math.trunc(flow.maxAmount)}`,
+      );
+      return true;
+    }
+
+    const wallet = await Wallet.findOne({ user: flow.userId }).lean();
+    const balance = Number(wallet?.balance || 0);
+    if (balance < amount) {
+      await sendBotMessage(
+        chatId,
+        `Insufficient fund. user: ${telegramId}, amount: ${amount.toFixed(1)}`,
+      );
+      return true;
+    }
+
+    withdrawFlowByTelegramId.set(telegramId, {
+      ...flow,
+      step: "awaiting_bank_method",
+      amount,
+    });
+
+    const keyboard = {
+      inline_keyboard: WITHDRAW_BANKS.map((bank) => [
+        {
+          text: bank.label,
+          callback_data: `withdraw_method_${bank.id}`,
+        },
+      ]),
+    };
+
+    await sendBotMessage(
+      chatId,
+      "Select withdrawal method:",
+      { reply_markup: keyboard },
+    );
+    return true;
+  }
+
+  if (flow.step === "awaiting_account_identifier") {
+    const accountIdentifier = text.trim();
+    if (!accountIdentifier) {
+      await sendBotMessage(chatId, "Please enter a valid account/phone number.");
+      return true;
+    }
+    withdrawFlowByTelegramId.set(telegramId, {
+      ...flow,
+      step: "awaiting_account_name",
+      accountIdentifier,
+    });
+    await sendBotMessage(chatId, "Please enter account holder name:");
+    return true;
+  }
+
+  if (flow.step === "awaiting_account_name") {
+    const accountName = text.trim();
+    if (!accountName) {
+      await sendBotMessage(chatId, "Please enter a valid account holder name.");
+      return true;
+    }
+
+    const result = await createTelegramWithdrawalRequest({
+      userId: flow.userId,
+      amount: flow.amount,
+      bankMethod: flow.bankMethod,
+      accountIdentifier: flow.accountIdentifier,
+      accountName,
+      chatId,
+    });
+
+    withdrawFlowByTelegramId.delete(telegramId);
+
+    if (!result.success) {
+      await sendBotMessage(chatId, `❌ ${result.error}`);
+      return true;
+    }
+
+    await sendBotMessage(
+      chatId,
+      `✅ Withdrawal request created.\n\nAmount: ${flow.amount} Br\nMethod: ${flow.bankMethod}\nRemaining balance: ${Math.trunc(result.remainingBalance)} Br`,
+    );
+    return true;
+  }
+
+  return false;
 };
 
 /**
@@ -601,6 +961,17 @@ export const processBotUpdate = async (update) => {
 
       console.log("💬 Message received:", text);
       console.log("📱 Contact shared:", contact ? "Yes" : "No");
+
+      // Active in-chat withdrawal flow
+      if (!contact && text) {
+        const consumedByWithdrawFlow = await handleWithdrawFlowText(
+          update.message,
+          text.trim(),
+        );
+        if (consumedByWithdrawFlow) {
+          return;
+        }
+      }
 
       // Handle contact sharing (phone number)
       if (contact && contact.phone_number) {
@@ -796,6 +1167,11 @@ export const processBotUpdate = async (update) => {
         await handlePlayCommand(update.message);
         return;
       }
+      if (text.startsWith("/balance")) {
+        console.log("💳 Processing /balance command");
+        await handleBalanceCommand(update.message);
+        return;
+      }
       if (text.startsWith("/deposit")) {
         console.log("💰 Processing /deposit command");
         await handleDepositCommand(update.message);
@@ -806,9 +1182,27 @@ export const processBotUpdate = async (update) => {
         await handleWithdrawCommand(update.message);
         return;
       }
-      if (text.startsWith("/support")) {
-        console.log("🆘 Processing /support command");
-        await handleSupportCommand(update.message);
+      if (text.startsWith("/cancel")) {
+        const telegramId = String(update.message.from.id);
+        if (withdrawFlowByTelegramId.has(telegramId)) {
+          withdrawFlowByTelegramId.delete(telegramId);
+          await sendBotMessage(update.message.chat.id, "❌ Withdrawal cancelled.");
+          return;
+        }
+      }
+      if (text.startsWith("/instructions")) {
+        console.log("📘 Processing /instructions command");
+        await handleInstructionsCommand(update.message);
+        return;
+      }
+      if (text.startsWith("/contact") || text.startsWith("/support")) {
+        console.log("🆘 Processing /contact command");
+        await handleContactCommand(update.message);
+        return;
+      }
+      if (text.startsWith("/join")) {
+        console.log("👥 Processing /join command");
+        await handleJoinCommand(update.message);
         return;
       }
       if (text.startsWith("/invite")) {
@@ -980,12 +1374,15 @@ export const registerBotCommands = async () => {
   }
 
   const commands = [
-    { command: "play", description: "Join a bingo game" },
-    { command: "deposit", description: "Deposit funds to your wallet" },
-    { command: "withdraw", description: "Withdraw funds from your wallet" },
-    { command: "invite", description: "Get your referral link" },
-    { command: "support", description: "Get help and support" },
-    { command: "start", description: "Start the bot" },
+    { command: "start", description: "Main Menu" },
+    { command: "play", description: "Play Bingo" },
+    { command: "balance", description: "Check Balance" },
+    { command: "deposit", description: "Deposit" },
+    { command: "withdraw", description: "Withdraw" },
+    { command: "invite", description: "Share and Earn" },
+    { command: "instructions", description: "How to Play" },
+    { command: "contact", description: "Get help" },
+    { command: "join", description: "Our community" },
   ];
 
   try {
