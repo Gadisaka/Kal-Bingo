@@ -15,17 +15,21 @@ function normalizeProvider(provider) {
 function extractTransactionId(provider, rawInput) {
   const input = String(rawInput || "").trim();
   if (!input) return "";
+  const cleanToken = (token) =>
+    String(token || "")
+      .trim()
+      .replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/gi, "")
+      .toUpperCase();
 
   // Direct ID input support (users may still submit only the transaction ID)
   if (/^[A-Z0-9]{8,24}$/i.test(input)) {
-    return input.toUpperCase();
+    return cleanToken(input);
   }
 
   const patternsByProvider = {
     telebirr: [
-      /transaction number is\s*([A-Z0-9]{8,24})/i,
       /receipt\/([A-Z0-9]{8,24})/i,
-      /txn(?:\s*id)?\s*[:\-]?\s*([A-Z0-9]{8,24})/i,
+      /transaction\s+number\s+is\s*([A-Z0-9]{8,24})/i,
     ],
     cbebirr: [
       /txn\s*id\s*([A-Z0-9]{8,24})/i,
@@ -38,13 +42,14 @@ function extractTransactionId(provider, rawInput) {
   for (const pattern of patterns) {
     const match = input.match(pattern);
     if (match?.[1]) {
-      return match[1].toUpperCase();
+      const token = cleanToken(match[1]);
+      if (token) return token;
     }
   }
 
   // Last-resort fallback: grab a plausible uppercase transaction token
   const fallback = input.match(/\b[A-Z]{2,6}[A-Z0-9]{6,24}\b/);
-  return fallback?.[0]?.toUpperCase() || "";
+  return cleanToken(fallback?.[0] || "");
 }
 
 function extractPhoneNumberFromSms(rawInput) {

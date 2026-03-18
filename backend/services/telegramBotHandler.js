@@ -90,7 +90,8 @@ const getDepositInstructionText = ({
   maxAmount,
 }) =>
   `${providerLabel} አካውንት
-${phoneNumber || "-"} - ${accountName || ""}
+ስልክ: ${phoneNumber || "Not configured"}
+ስም: ${accountName || "Not configured"}
 
 መመሪያ
 
@@ -100,6 +101,32 @@ ${phoneNumber || "-"} - ${accountName || ""}
 
 Deposit limit: ${Math.trunc(minAmount)} - ${Math.trunc(maxAmount)} Birr
 ለማቋረጥ /cancel ይላኩ።`;
+
+const getConfiguredDepositMethods = (settings) =>
+  DEPOSIT_BANKS.map((method) => {
+    const source =
+      method.id === "cbebirr"
+        ? settings.depositAccounts?.cbebirr
+        : settings.depositAccounts?.telebirr;
+
+    const accountName = String(source?.accountName || "").trim();
+    const phoneNumber = String(source?.phoneNumber || "").trim();
+    const enabled = Boolean(source?.enabled);
+    const validAccount =
+      enabled &&
+      accountName &&
+      phoneNumber &&
+      accountName !== "-" &&
+      phoneNumber !== "-";
+
+    return {
+      ...method,
+      accountName,
+      phoneNumber,
+      enabled,
+      validAccount,
+    };
+  }).filter((method) => method.validAccount);
 
 const inferDepositProviderFromSms = (smsText) => {
   const text = String(smsText || "").toLowerCase();
@@ -643,23 +670,9 @@ const handleDepositCommand = async (message) => {
     }
 
     const settings = await Settings.getSettings();
-    const telebirr = settings.depositAccounts?.telebirr;
-    const cbebirr = settings.depositAccounts?.cbebirr;
     const minAmount = Number(settings.deposit?.minAmount || 10);
     const maxAmount = Number(settings.deposit?.maxAmount || 100000);
-    const availableMethods = DEPOSIT_BANKS.filter((method) => {
-      const account =
-        method.id === "cbebirr" ? cbebirr : telebirr;
-      return !!(account?.enabled && account?.phoneNumber && account?.accountName);
-    }).map((method) => {
-      const account =
-        method.id === "cbebirr" ? cbebirr : telebirr;
-      return {
-        ...method,
-        accountName: account.accountName,
-        phoneNumber: account.phoneNumber,
-      };
-    });
+    const availableMethods = getConfiguredDepositMethods(settings);
 
     if (!availableMethods.length) {
       await sendBotMessage(
@@ -1253,13 +1266,14 @@ const handleDepositFlowText = async (message, text) => {
     );
 
     const inferredProvider = inferDepositProviderFromSms(text);
-    const providersToTry = Array.from(
-      new Set([inferredProvider, flow.provider].filter(Boolean))
-    );
+    const primaryProvider = inferredProvider || flow.provider;
+    const providersToTry = inferredProvider
+      ? [primaryProvider]
+      : Array.from(new Set([primaryProvider, flow.provider].filter(Boolean)));
 
     const result = await createTelegramDeposit({
       userId: flow.userId,
-      provider: providersToTry[0] || flow.provider,
+      provider: providersToTry[0] || "telebirr",
       fallbackProviders: providersToTry.slice(1),
       smsText: text,
       receiverAccountName: flow.receiverAccountName,
