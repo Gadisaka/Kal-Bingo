@@ -47,6 +47,19 @@ function extractTransactionId(provider, rawInput) {
   return fallback?.[0]?.toUpperCase() || "";
 }
 
+function extractPhoneNumberFromSms(rawInput) {
+  const input = String(rawInput || "");
+  if (!input) return "";
+
+  const fromQueryParam = input.match(/[?&]PH=(251\d{9})/i);
+  if (fromQueryParam?.[1]) return fromQueryParam[1];
+
+  const genericE164Et = input.match(/\b251\d{9}\b/);
+  if (genericE164Et?.[0]) return genericE164Et[0];
+
+  return "";
+}
+
 function parseAmount(rawAmount) {
   if (rawAmount === undefined || rawAmount === null) return null;
   if (typeof rawAmount === "number" && Number.isFinite(rawAmount)) return rawAmount;
@@ -91,25 +104,44 @@ async function verifyTransaction(provider, payload) {
     }
 
     if (normalizedProvider === "cbebirr") {
-      const receiverPhone =
-        payload.receiverAccountNumber || payload.telebirrPhoneNumber;
-      if (!receiverPhone) {
+      const extractedPhone = extractPhoneNumberFromSms(payload.referenceId);
+      const configuredPhone = String(
+        payload.receiverAccountNumber || payload.telebirrPhoneNumber || ""
+      ).replace(/\D/g, "");
+      const candidatePhones = Array.from(
+        new Set([extractedPhone, configuredPhone].filter(Boolean))
+      );
+
+      if (!candidatePhones.length) {
         throw new Error("Receiver phone number is required for CBE Birr verification");
       }
 
-      res = await axios.post(
-        `${BASE_URL}/verify-cbebirr`,
-        {
-          receiptNumber: transactionNumber,
-          phoneNumber: String(receiverPhone).replace(/\D/g, ""),
-        },
-        {
-          headers: {
-            "x-api-key": API_KEY,
-            "Content-Type": "application/json",
-          },
+      let lastError;
+      for (const phoneNumber of candidatePhones) {
+        try {
+          res = await axios.post(
+            `${BASE_URL}/verify-cbebirr`,
+            {
+              receiptNumber: transactionNumber,
+              phoneNumber,
+            },
+            {
+              headers: {
+                "x-api-key": API_KEY,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+          lastError = null;
+          break;
+        } catch (err) {
+          lastError = err;
         }
-      );
+      }
+
+      if (!res && lastError) {
+        throw lastError;
+      }
     } else {
       res = await axios.post(
         `${BASE_URL}/verify-telebirr`,
@@ -153,10 +185,21 @@ async function verifyTransaction(provider, payload) {
       raw: responseData,
     };
   } catch (err) {
+    const apiErrorPayload = err.response?.data;
+    let detailedMessage = err.response?.data?.message || err.message;
+
+    if (!err.response?.data?.message && apiErrorPayload) {
+      try {
+        detailedMessage = JSON.stringify(apiErrorPayload);
+      } catch {
+        // keep fallback message
+      }
+    }
+
     return {
       success: false,
-      message: err.response?.data?.message || err.message,
-      data: err.response?.data,
+      message: detailedMessage,
+      data: apiErrorPayload,
     };
   }
 }
