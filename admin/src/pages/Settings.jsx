@@ -24,6 +24,11 @@ const Settings = () => {
       accountName: "",
       phoneNumber: "",
     },
+    cbebirr: {
+      enabled: true,
+      accountName: "",
+      phoneNumber: "",
+    },
     deposit: {
       minAmount: 10,
       maxAmount: 100000,
@@ -119,6 +124,11 @@ const Settings = () => {
             accountName: "",
             phoneNumber: "",
           },
+          cbebirr: response.data.data.depositAccounts?.cbebirr || {
+            enabled: true,
+            accountName: "",
+            phoneNumber: "",
+          },
           deposit: response.data.data.deposit || {
             minAmount: 10,
             maxAmount: 100000,
@@ -144,6 +154,7 @@ const Settings = () => {
         `${API_URL}/api/admin/deposit-accounts`,
         {
           telebirr: depositSettings.telebirr,
+          cbebirr: depositSettings.cbebirr,
           deposit: depositSettings.deposit,
         },
         {
@@ -872,6 +883,92 @@ const Settings = () => {
                 </div>
               </div>
 
+              {/* CBE Birr Account Settings */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
+                  <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center">
+                    <span className="text-white font-bold text-[10px]">CBE</span>
+                  </div>
+                  CBE Birr Account
+                </h3>
+                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="cbebirrEnabled"
+                      checked={depositSettings.cbebirr.enabled}
+                      onChange={(e) =>
+                        setDepositSettings({
+                          ...depositSettings,
+                          cbebirr: {
+                            ...depositSettings.cbebirr,
+                            enabled: e.target.checked,
+                          },
+                        })
+                      }
+                      className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
+                    />
+                    <label
+                      htmlFor="cbebirrEnabled"
+                      className="text-sm font-medium text-gray-700"
+                    >
+                      Enable CBE Birr deposits
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <User className="w-4 h-4 inline mr-1" />
+                        Account Name
+                      </label>
+                      <input
+                        type="text"
+                        value={depositSettings.cbebirr.accountName}
+                        onChange={(e) =>
+                          setDepositSettings({
+                            ...depositSettings,
+                            cbebirr: {
+                              ...depositSettings.cbebirr,
+                              accountName: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="Enter full account name"
+                        className="w-full rounded-lg border-gray-300 border p-2 focus:ring-primary focus:border-primary"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        The name on the CBE Birr account
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <Phone className="w-4 h-4 inline mr-1" />
+                        Phone Number
+                      </label>
+                      <input
+                        type="text"
+                        value={depositSettings.cbebirr.phoneNumber}
+                        onChange={(e) =>
+                          setDepositSettings({
+                            ...depositSettings,
+                            cbebirr: {
+                              ...depositSettings.cbebirr,
+                              phoneNumber: e.target.value,
+                            },
+                          })
+                        }
+                        placeholder="e.g., 0912345678"
+                        className="w-full rounded-lg border-gray-300 border p-2 focus:ring-primary focus:border-primary"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        The CBE Birr phone number to receive payments
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Deposit Limits */}
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">
@@ -951,6 +1048,41 @@ const Settings = () => {
                           <p className="text-slate-400 text-xs">Phone Number</p>
                           <p className="text-white font-mono font-bold text-lg">
                             {depositSettings.telebirr.phoneNumber || "Not set"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              {/* CBE Birr Preview Card */}
+              {depositSettings.cbebirr.enabled &&
+                depositSettings.cbebirr.phoneNumber && (
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">
+                      CBE Birr Preview
+                    </h3>
+                    <div className="bg-slate-900 p-6 rounded-lg border border-slate-700 max-w-sm">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 bg-blue-700 rounded-lg flex items-center justify-center">
+                          <span className="text-white font-bold">CBE</span>
+                        </div>
+                        <div>
+                          <h4 className="text-white font-bold">CBE Birr</h4>
+                          <p className="text-slate-400 text-sm">Mobile Money</p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="bg-slate-800 rounded-lg p-3">
+                          <p className="text-slate-400 text-xs">Account Name</p>
+                          <p className="text-white font-medium">
+                            {depositSettings.cbebirr.accountName || "Not set"}
+                          </p>
+                        </div>
+                        <div className="bg-slate-800 rounded-lg p-3">
+                          <p className="text-slate-400 text-xs">Phone Number</p>
+                          <p className="text-white font-mono font-bold text-lg">
+                            {depositSettings.cbebirr.phoneNumber || "Not set"}
                           </p>
                         </div>
                       </div>

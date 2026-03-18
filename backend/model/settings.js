@@ -36,6 +36,11 @@ const settingsSchema = new mongoose.Schema(
         accountName: { type: String, default: "" },
         phoneNumber: { type: String, default: "" },
       },
+      cbebirr: {
+        enabled: { type: Boolean, default: true },
+        accountName: { type: String, default: "" },
+        phoneNumber: { type: String, default: "" },
+      },
     },
     // Deposit Settings
     deposit: {

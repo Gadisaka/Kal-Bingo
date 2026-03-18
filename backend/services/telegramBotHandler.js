@@ -101,6 +101,27 @@ ${phoneNumber || "-"} - ${accountName || ""}
 Deposit limit: ${Math.trunc(minAmount)} - ${Math.trunc(maxAmount)} Birr
 ለማቋረጥ /cancel ይላኩ።`;
 
+const inferDepositProviderFromSms = (smsText) => {
+  const text = String(smsText || "").toLowerCase();
+  if (!text) return null;
+
+  const telebirrSignals = [
+    "thank you for using telebirr",
+    "transaction number is",
+    "transactioninfo.ethiotelecom.et/receipt/",
+  ];
+  if (telebirrSignals.some((signal) => text.includes(signal))) {
+    return "telebirr";
+  }
+
+  const cbebirrSignals = ["cbe birr", "txn id", "aureceipt?tid="];
+  if (cbebirrSignals.some((signal) => text.includes(signal))) {
+    return "cbebirr";
+  }
+
+  return null;
+};
+
 /**
  * Send a message via the auth bot
  */
@@ -164,7 +185,7 @@ export const handleCallbackQuery = async (callbackQuery) => {
       return;
     }
 
-    const method = DEPOSIT_BANKS.find((b) => b.id === bankId);
+    const method = (flow.availableMethods || []).find((b) => b.id === bankId);
     if (!method) {
       await sendBotMessage(chatId, "⚠️ Invalid deposit method.");
       return;
@@ -175,6 +196,8 @@ export const handleCallbackQuery = async (callbackQuery) => {
       step: "awaiting_sms",
       provider: method.id,
       providerLabel: method.label,
+      receiverAccountName: method.accountName || "",
+      receiverPhoneNumber: method.phoneNumber || "",
     });
 
     await sendBotMessage(
@@ -620,14 +643,28 @@ const handleDepositCommand = async (message) => {
     }
 
     const settings = await Settings.getSettings();
-    const receiverAccount = settings.depositAccounts?.telebirr;
+    const telebirr = settings.depositAccounts?.telebirr;
+    const cbebirr = settings.depositAccounts?.cbebirr;
     const minAmount = Number(settings.deposit?.minAmount || 10);
     const maxAmount = Number(settings.deposit?.maxAmount || 100000);
+    const availableMethods = DEPOSIT_BANKS.filter((method) => {
+      const account =
+        method.id === "cbebirr" ? cbebirr : telebirr;
+      return !!(account?.enabled && account?.phoneNumber && account?.accountName);
+    }).map((method) => {
+      const account =
+        method.id === "cbebirr" ? cbebirr : telebirr;
+      return {
+        ...method,
+        accountName: account.accountName,
+        phoneNumber: account.phoneNumber,
+      };
+    });
 
-    if (!receiverAccount?.phoneNumber) {
+    if (!availableMethods.length) {
       await sendBotMessage(
         chatId,
-        "⚠️ Deposit account is not configured. Please contact support.",
+        "⚠️ No deposit method is configured. Please contact support.",
       );
       return;
     }
@@ -638,12 +675,11 @@ const handleDepositCommand = async (message) => {
       userId: String(user._id),
       minAmount,
       maxAmount,
-      receiverAccountName: receiverAccount.accountName || "",
-      receiverPhoneNumber: receiverAccount.phoneNumber,
+      availableMethods,
     });
 
     const keyboard = {
-      inline_keyboard: DEPOSIT_BANKS.map((bank) => [
+      inline_keyboard: availableMethods.map((bank) => [
         {
           text: bank.label,
           callback_data: `deposit_method_${bank.id}`,
@@ -883,6 +919,7 @@ const createTelegramWithdrawalRequest = async ({
 const createTelegramDeposit = async ({
   userId,
   provider,
+  fallbackProviders = [],
   smsText,
   receiverAccountName,
   receiverPhoneNumber,
@@ -890,12 +927,28 @@ const createTelegramDeposit = async ({
   maxAmount,
   chatId,
 }) => {
-  const verificationResult = await verifyTransaction(provider, {
-    referenceId: smsText,
-    receiverName: receiverAccountName,
-    receiverAccountNumber: receiverPhoneNumber,
-    telebirrPhoneNumber: receiverPhoneNumber,
-  });
+  const providersToTry = Array.from(
+    new Set([provider, ...(fallbackProviders || [])].filter(Boolean))
+  );
+
+  let verificationResult = null;
+  let resolvedProvider = provider;
+  for (const candidateProvider of providersToTry) {
+    const candidateResult = await verifyTransaction(candidateProvider, {
+      referenceId: smsText,
+      receiverName: receiverAccountName,
+      receiverAccountNumber: receiverPhoneNumber,
+      telebirrPhoneNumber: receiverPhoneNumber,
+    });
+
+    if (candidateResult.success) {
+      verificationResult = candidateResult;
+      resolvedProvider = candidateProvider;
+      break;
+    }
+
+    verificationResult = candidateResult;
+  }
 
   if (!verificationResult.success) {
     return {
@@ -963,7 +1016,7 @@ const createTelegramDeposit = async ({
           user: userId,
           transactionId: cleanTransactionId,
           amount: depositAmount,
-          provider,
+          provider: resolvedProvider,
           status: "pending",
           meta: {
             requestedAt: new Date(),
@@ -1001,7 +1054,7 @@ const createTelegramDeposit = async ({
           meta: {
             depositId: depositRecord._id.toString(),
             transactionId: cleanTransactionId,
-            provider,
+            provider: resolvedProvider,
             source: "telegram_bot",
             verificationResult: {
               success: true,
@@ -1024,6 +1077,7 @@ const createTelegramDeposit = async ({
       success: true,
       transactionId: cleanTransactionId,
       amount: depositAmount,
+      provider: resolvedProvider,
       balance: Number(updatedWallet?.balance || 0),
     };
   } catch (error) {
@@ -1198,9 +1252,15 @@ const handleDepositFlowText = async (message, text) => {
       "Deposit request received. Your top-up will be done in 1 minute.",
     );
 
+    const inferredProvider = inferDepositProviderFromSms(text);
+    const providersToTry = Array.from(
+      new Set([inferredProvider, flow.provider].filter(Boolean))
+    );
+
     const result = await createTelegramDeposit({
       userId: flow.userId,
-      provider: flow.provider,
+      provider: providersToTry[0] || flow.provider,
+      fallbackProviders: providersToTry.slice(1),
       smsText: text,
       receiverAccountName: flow.receiverAccountName,
       receiverPhoneNumber: flow.receiverPhoneNumber,
@@ -1218,7 +1278,7 @@ const handleDepositFlowText = async (message, text) => {
 
     await sendBotMessage(
       chatId,
-      `✅ Deposit successful!\n\nAmount: ${Math.trunc(result.amount)} Br\nTransaction: ${result.transactionId}\nNew balance: ${Math.trunc(result.balance)} Br`,
+      `✅ Deposit successful!\n\nMethod: ${result.provider}\nAmount: ${Math.trunc(result.amount)} Br\nTransaction: ${result.transactionId}\nNew balance: ${Math.trunc(result.balance)} Br`,
     );
     return true;
   }

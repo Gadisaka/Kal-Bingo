@@ -18,6 +18,11 @@ export const getDepositAccounts = async (req, res) => {
         accountName: settings.depositAccounts?.telebirr?.accountName || "",
         phoneNumber: settings.depositAccounts?.telebirr?.phoneNumber || "",
       },
+      cbebirr: {
+        enabled: settings.depositAccounts?.cbebirr?.enabled ?? true,
+        accountName: settings.depositAccounts?.cbebirr?.accountName || "",
+        phoneNumber: settings.depositAccounts?.cbebirr?.phoneNumber || "",
+      },
     };
 
     const depositSettings = {
@@ -51,6 +56,7 @@ export const processDeposit = async (req, res) => {
   try {
     const userId = String(req.user._id);
     const { transactionId, amount, provider = "telebirr" } = req.body;
+    const normalizedProvider = String(provider || "").toLowerCase();
 
     // Validate input
     if (!transactionId || !transactionId.trim()) {
@@ -89,11 +95,30 @@ export const processDeposit = async (req, res) => {
       });
     }
 
+    if (!["telebirr", "cbebirr"].includes(normalizedProvider)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid provider. Allowed providers are telebirr and cbebirr",
+      });
+    }
+
     // Check if provider is enabled
-    if (provider === "telebirr" && !settings.depositAccounts?.telebirr?.enabled) {
+    if (
+      normalizedProvider === "telebirr" &&
+      !settings.depositAccounts?.telebirr?.enabled
+    ) {
       return res.status(400).json({
         success: false,
         message: "Telebirr deposits are currently disabled",
+      });
+    }
+    if (
+      normalizedProvider === "cbebirr" &&
+      !settings.depositAccounts?.cbebirr?.enabled
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "CBE Birr deposits are currently disabled",
       });
     }
 
@@ -107,11 +132,14 @@ export const processDeposit = async (req, res) => {
     }
 
     // Get the receiver account details for verification
-    const receiverAccount = settings.depositAccounts?.telebirr;
+    const receiverAccount =
+      normalizedProvider === "cbebirr"
+        ? settings.depositAccounts?.cbebirr
+        : settings.depositAccounts?.telebirr;
     if (!receiverAccount?.phoneNumber || !receiverAccount?.accountName) {
       return res.status(500).json({
         success: false,
-        message: "Deposit account not configured. Please contact support.",
+        message: `${normalizedProvider} deposit account not configured. Please contact support.`,
       });
     }
 
@@ -124,7 +152,7 @@ export const processDeposit = async (req, res) => {
           user: userId,
           transactionId: cleanTransactionId,
           amount: depositAmount,
-          provider,
+          provider: normalizedProvider,
           status: "pending",
           meta: {
             requestedAt: new Date(),
@@ -138,7 +166,7 @@ export const processDeposit = async (req, res) => {
     const depositRecord = deposit[0];
 
     // Verify the transaction with the provider
-    const verificationResult = await verifyTransaction(provider, {
+    const verificationResult = await verifyTransaction(normalizedProvider, {
       referenceId: cleanTransactionId,
       receivedAmount: depositAmount,
       receiverName: receiverAccount.accountName,
@@ -192,7 +220,7 @@ export const processDeposit = async (req, res) => {
           meta: {
             depositId: depositRecord._id.toString(),
             transactionId: cleanTransactionId,
-            provider,
+            provider: normalizedProvider,
             verificationResult: {
               success: true,
               verifiedAt: new Date(),
@@ -219,6 +247,7 @@ export const processDeposit = async (req, res) => {
         id: depositRecord._id,
         amount: verifiedAmount,
         transactionId: cleanTransactionId,
+        provider: normalizedProvider,
         status: "verified",
       },
       wallet: {
@@ -413,7 +442,7 @@ export const getAllTransactions = async (req, res) => {
  */
 export const updateDepositAccounts = async (req, res) => {
   try {
-    const { telebirr, deposit: depositSettings } = req.body;
+    const { telebirr, cbebirr, deposit: depositSettings } = req.body;
 
     let settings = await Settings.findOne();
     if (!settings) {
@@ -427,6 +456,16 @@ export const updateDepositAccounts = async (req, res) => {
         enabled: telebirr.enabled ?? settings.depositAccounts?.telebirr?.enabled ?? true,
         accountName: telebirr.accountName ?? settings.depositAccounts?.telebirr?.accountName ?? "",
         phoneNumber: telebirr.phoneNumber ?? settings.depositAccounts?.telebirr?.phoneNumber ?? "",
+      };
+    }
+
+    // Update CBE Birr account
+    if (cbebirr) {
+      settings.depositAccounts = settings.depositAccounts || {};
+      settings.depositAccounts.cbebirr = {
+        enabled: cbebirr.enabled ?? settings.depositAccounts?.cbebirr?.enabled ?? true,
+        accountName: cbebirr.accountName ?? settings.depositAccounts?.cbebirr?.accountName ?? "",
+        phoneNumber: cbebirr.phoneNumber ?? settings.depositAccounts?.cbebirr?.phoneNumber ?? "",
       };
     }
 
@@ -466,17 +505,23 @@ export const updateDepositAccounts = async (req, res) => {
 export const getDepositAccountsAdmin = async (req, res) => {
   try {
     const settings = await Settings.getSettings();
+    const depositAccounts = {
+      telebirr: {
+        enabled: settings.depositAccounts?.telebirr?.enabled ?? true,
+        accountName: settings.depositAccounts?.telebirr?.accountName || "",
+        phoneNumber: settings.depositAccounts?.telebirr?.phoneNumber || "",
+      },
+      cbebirr: {
+        enabled: settings.depositAccounts?.cbebirr?.enabled ?? true,
+        accountName: settings.depositAccounts?.cbebirr?.accountName || "",
+        phoneNumber: settings.depositAccounts?.cbebirr?.phoneNumber || "",
+      },
+    };
 
     res.json({
       success: true,
       data: {
-        depositAccounts: settings.depositAccounts || {
-          telebirr: {
-            enabled: true,
-            accountName: "",
-            phoneNumber: "",
-          },
-        },
+        depositAccounts,
         deposit: settings.deposit || {
           minAmount: 10,
           maxAmount: 100000,
