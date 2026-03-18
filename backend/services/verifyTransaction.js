@@ -26,24 +26,36 @@ function extractTransactionId(provider, rawInput) {
     return cleanToken(input);
   }
 
-  const patternsByProvider = {
-    telebirr: [
-      /receipt\/([A-Z0-9]{8,24})/i,
-      /transaction\s+number\s+is\s*([A-Z0-9]{8,24})/i,
-    ],
-    cbebirr: [
+  if (provider === "telebirr") {
+    const candidates = [];
+
+    const phraseMatch = input.match(
+      /transaction\s+number\s+is\s*([A-Z0-9]{8,24})/i
+    );
+    if (phraseMatch?.[1]) candidates.push(cleanToken(phraseMatch[1]));
+
+    const receiptMatch = input.match(/receipt\/([A-Z0-9]{8,24})/i);
+    if (receiptMatch?.[1]) candidates.push(cleanToken(receiptMatch[1]));
+
+    // Deduplicate while keeping order; prefer phrase match if present.
+    const uniqueCandidates = Array.from(new Set(candidates.filter(Boolean)));
+    if (uniqueCandidates.length) {
+      return uniqueCandidates[0];
+    }
+  }
+
+  if (provider === "cbebirr") {
+    const patterns = [
       /txn\s*id\s*([A-Z0-9]{8,24})/i,
       /[?&]tid=([A-Z0-9]{8,24})/i,
       /transaction(?:\s*id)?\s*[:\-]?\s*([A-Z0-9]{8,24})/i,
-    ],
-  };
-
-  const patterns = patternsByProvider[provider] || [];
-  for (const pattern of patterns) {
-    const match = input.match(pattern);
-    if (match?.[1]) {
-      const token = cleanToken(match[1]);
-      if (token) return token;
+    ];
+    for (const pattern of patterns) {
+      const match = input.match(pattern);
+      if (match?.[1]) {
+        const token = cleanToken(match[1]);
+        if (token) return token;
+      }
     }
   }
 
@@ -89,6 +101,7 @@ function parseAmount(rawAmount) {
  * @returns {Promise<Object>} - API response
  */
 async function verifyTransaction(provider, payload) {
+  let extractedReference = "";
   try {
     if (!API_KEY) {
       throw new Error("VERIFY_API_KEY is not configured");
@@ -104,6 +117,7 @@ async function verifyTransaction(provider, payload) {
       normalizedProvider,
       payload.referenceId
     );
+    extractedReference = transactionNumber;
     if (!transactionNumber) {
       throw new Error("Could not extract transaction ID from the provided SMS");
     }
@@ -207,6 +221,7 @@ async function verifyTransaction(provider, payload) {
     return {
       success: false,
       message: detailedMessage,
+      referenceId: extractedReference || undefined,
       data: apiErrorPayload,
     };
   }
