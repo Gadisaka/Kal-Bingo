@@ -20,7 +20,7 @@ const depositSchema = new mongoose.Schema(
     },
     provider: {
       type: String,
-      enum: ["telebirr"],
+      enum: ["telebirr", "cbebirr"],
       default: "telebirr",
       required: true,
     },

@@ -5,8 +5,10 @@ import AuthSession from "../model/authSession.js";
 import User from "../model/user.js";
 import Wallet from "../model/wallet.js";
 import Withdrawal from "../model/withdrawal.js";
+import Deposit from "../model/deposit.js";
 import WalletTransaction from "../model/walletTransaction.js";
 import Settings from "../model/settings.js";
+import { verifyTransaction } from "./verifyTransaction.js";
 import { applyReferral, generateReferralLinks } from "../utils/referral.js";
 
 const TELEGRAM_API = "https://api.telegram.org/bot";
@@ -20,11 +22,16 @@ const getAuthBotUsername = () =>
   process.env.VITE_BOT_USERNAME;
 
 const withdrawFlowByTelegramId = new Map();
+const depositFlowByTelegramId = new Map();
 const WITHDRAW_BANKS = [
   { id: "telebirr", label: "Telebirr" },
   { id: "cbe", label: "CBE" },
   { id: "awash", label: "Awash" },
   { id: "abyssinia", label: "Abyssinia" },
+];
+const DEPOSIT_BANKS = [
+  { id: "telebirr", label: "Telebirr" },
+  { id: "cbebirr", label: "CBE Birr" },
 ];
 
 const INSTRUCTIONS_TEXT = `የቢንጎ ጨዋታ ህጎች
@@ -75,6 +82,25 @@ const getMainMenuKeyboard = (frontendUrl) => ({
   ],
 });
 
+const getDepositInstructionText = ({
+  providerLabel,
+  phoneNumber,
+  accountName,
+  minAmount,
+  maxAmount,
+}) =>
+  `${providerLabel} አካውንት
+${phoneNumber || "-"} - ${accountName || ""}
+
+መመሪያ
+
+1. ከላይ ባለው የ ${providerLabel} አካውንት ገንዘቡን ያስገቡ
+2. ብሩን ስትልኩ የከፈላችሁበትን መረጃ የያዘ አጭር የጹሁፍ መልክት (SMS) ይደርሳችኋል
+3. የደረሳችሁን SMS ሙሉውን ኮፒ አድርጋችሁ እዚህ ቻት ላይ ፔስት አድርጋችሁ ላኩት
+
+Deposit limit: ${Math.trunc(minAmount)} - ${Math.trunc(maxAmount)} Birr
+ለማቋረጥ /cancel ይላኩ።`;
+
 /**
  * Send a message via the auth bot
  */
@@ -124,6 +150,45 @@ export const handleCallbackQuery = async (callbackQuery) => {
   const lastName = from.last_name || "";
   const username = from.username || null;
   const phoneNumber = from.phone_number || null;
+
+  // Parse callback data: "deposit_method_<bankId>"
+  const depositMethodMatch = data.match(/^deposit_method_([a-zA-Z0-9_]+)$/);
+  if (depositMethodMatch) {
+    const [, bankId] = depositMethodMatch;
+    const flow = depositFlowByTelegramId.get(telegramId);
+    if (!flow || flow.step !== "awaiting_bank_method") {
+      await sendBotMessage(
+        chatId,
+        "⚠️ No active deposit flow. Send /deposit to start again.",
+      );
+      return;
+    }
+
+    const method = DEPOSIT_BANKS.find((b) => b.id === bankId);
+    if (!method) {
+      await sendBotMessage(chatId, "⚠️ Invalid deposit method.");
+      return;
+    }
+
+    depositFlowByTelegramId.set(telegramId, {
+      ...flow,
+      step: "awaiting_sms",
+      provider: method.id,
+      providerLabel: method.label,
+    });
+
+    await sendBotMessage(
+      chatId,
+      getDepositInstructionText({
+        providerLabel: method.label,
+        phoneNumber: flow.receiverPhoneNumber,
+        accountName: flow.receiverAccountName,
+        minAmount: flow.minAmount,
+        maxAmount: flow.maxAmount,
+      }),
+    );
+    return;
+  }
 
   // Parse callback data: "withdraw_method_<bankId>"
   const withdrawMethodMatch = data.match(/^withdraw_method_([a-zA-Z0-9_]+)$/);
@@ -534,24 +599,70 @@ const handlePlayCommand = async (message) => {
  */
 const handleDepositCommand = async (message) => {
   const chatId = message.chat.id;
-  const frontendUrl = process.env.FRONTEND_URL || "https://sheqaygames.com";
+  const telegramId = String(message.from.id);
 
-  const keyboard = {
-    inline_keyboard: [
-      [
+  try {
+    if (withdrawFlowByTelegramId.has(telegramId)) {
+      await sendBotMessage(
+        chatId,
+        "⚠️ You already have an active withdrawal flow. Send /cancel first, then /deposit.",
+      );
+      return;
+    }
+
+    const user = await User.findOne({ telegramId, isActive: true }).lean();
+    if (!user) {
+      await sendBotMessage(
+        chatId,
+        "⚠️ You need an account before using deposits.\n\nUse /play to open the game first.",
+      );
+      return;
+    }
+
+    const settings = await Settings.getSettings();
+    const receiverAccount = settings.depositAccounts?.telebirr;
+    const minAmount = Number(settings.deposit?.minAmount || 10);
+    const maxAmount = Number(settings.deposit?.maxAmount || 100000);
+
+    if (!receiverAccount?.phoneNumber) {
+      await sendBotMessage(
+        chatId,
+        "⚠️ Deposit account is not configured. Please contact support.",
+      );
+      return;
+    }
+
+    depositFlowByTelegramId.set(telegramId, {
+      step: "awaiting_bank_method",
+      chatId,
+      userId: String(user._id),
+      minAmount,
+      maxAmount,
+      receiverAccountName: receiverAccount.accountName || "",
+      receiverPhoneNumber: receiverAccount.phoneNumber,
+    });
+
+    const keyboard = {
+      inline_keyboard: DEPOSIT_BANKS.map((bank) => [
         {
-          text: "💰 Open Wallet & Deposit",
-          web_app: { url: `${frontendUrl}?action=deposit` },
+          text: bank.label,
+          callback_data: `deposit_method_${bank.id}`,
         },
-      ],
-    ],
-  };
+      ]),
+    };
 
-  await sendBotMessage(
-    chatId,
-    "💰 <b>Deposit Funds</b>\n\nClick the button below to open your wallet and make a deposit:",
-    { reply_markup: keyboard },
-  );
+    await sendBotMessage(
+      chatId,
+      "Please select the bank option you wish to use for the top-up.",
+      { reply_markup: keyboard },
+    );
+  } catch (err) {
+    console.error("[/deposit] Error:", err.message);
+    await sendBotMessage(
+      chatId,
+      "❌ Could not start deposit right now. Please try again.",
+    );
+  }
 };
 
 /**
@@ -599,6 +710,14 @@ const handleWithdrawCommand = async (message) => {
   const telegramId = String(message.from.id);
 
   try {
+    if (depositFlowByTelegramId.has(telegramId)) {
+      await sendBotMessage(
+        chatId,
+        "⚠️ You already have an active deposit flow. Send /cancel first, then /withdraw.",
+      );
+      return;
+    }
+
     const user = await User.findOne({ telegramId, isActive: true }).lean();
     if (!user) {
       await sendBotMessage(
@@ -761,6 +880,177 @@ const createTelegramWithdrawalRequest = async ({
   }
 };
 
+const createTelegramDeposit = async ({
+  userId,
+  provider,
+  smsText,
+  receiverAccountName,
+  receiverPhoneNumber,
+  minAmount,
+  maxAmount,
+  chatId,
+}) => {
+  const verificationResult = await verifyTransaction(provider, {
+    referenceId: smsText,
+    receiverName: receiverAccountName,
+    receiverAccountNumber: receiverPhoneNumber,
+    telebirrPhoneNumber: receiverPhoneNumber,
+  });
+
+  if (!verificationResult.success) {
+    return {
+      success: false,
+      statusCode: 400,
+      error:
+        verificationResult.message ||
+        "Transaction verification failed. Please send the full SMS.",
+      details: verificationResult.data,
+    };
+  }
+
+  const cleanTransactionId = String(verificationResult.referenceId || "")
+    .trim()
+    .toUpperCase();
+  if (!cleanTransactionId) {
+    return {
+      success: false,
+      statusCode: 400,
+      error: "Could not extract transaction ID from the SMS.",
+    };
+  }
+
+  const depositAmount = Math.trunc(Number(verificationResult.data?.amount || 0));
+  if (!Number.isFinite(depositAmount) || depositAmount <= 0) {
+    return {
+      success: false,
+      statusCode: 400,
+      error: "Verified amount is invalid. Please check the SMS and try again.",
+    };
+  }
+
+  if (depositAmount < minAmount) {
+    return {
+      success: false,
+      statusCode: 400,
+      error: `Minimum deposit amount is ${Math.trunc(minAmount)} Birr.`,
+    };
+  }
+
+  if (depositAmount > maxAmount) {
+    return {
+      success: false,
+      statusCode: 400,
+      error: `Maximum deposit amount is ${Math.trunc(maxAmount)} Birr.`,
+    };
+  }
+
+  const alreadyUsed = await Deposit.isTransactionUsed(cleanTransactionId);
+  if (alreadyUsed) {
+    return {
+      success: false,
+      statusCode: 400,
+      error: "This transaction has already been used.",
+    };
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+
+    const [depositRecord] = await Deposit.create(
+      [
+        {
+          user: userId,
+          transactionId: cleanTransactionId,
+          amount: depositAmount,
+          provider,
+          status: "pending",
+          meta: {
+            requestedAt: new Date(),
+            source: "telegram_bot",
+            chatId: String(chatId),
+          },
+          verificationResult,
+        },
+      ],
+      { session },
+    );
+
+    let wallet = await Wallet.findOne({ user: userId }).session(session);
+    if (!wallet) {
+      const [createdWallet] = await Wallet.create(
+        [{ user: userId, balance: 0, bonus: 0 }],
+        { session },
+      );
+      wallet = createdWallet;
+    }
+
+    const updatedWallet = await Wallet.findOneAndUpdate(
+      { user: userId },
+      { $inc: { balance: depositAmount } },
+      { new: true, session },
+    );
+
+    await WalletTransaction.create(
+      [
+        {
+          user: userId,
+          amount: depositAmount,
+          type: "DEPOSIT",
+          balanceAfter: Number(updatedWallet?.balance || 0),
+          meta: {
+            depositId: depositRecord._id.toString(),
+            transactionId: cleanTransactionId,
+            provider,
+            source: "telegram_bot",
+            verificationResult: {
+              success: true,
+              verifiedAt: new Date(),
+            },
+          },
+        },
+      ],
+      { session },
+    );
+
+    depositRecord.status = "verified";
+    depositRecord.verifiedAmount = depositAmount;
+    depositRecord.verifiedAt = new Date();
+    await depositRecord.save({ session });
+
+    await session.commitTransaction();
+
+    return {
+      success: true,
+      transactionId: cleanTransactionId,
+      amount: depositAmount,
+      balance: Number(updatedWallet?.balance || 0),
+    };
+  } catch (error) {
+    try {
+      await session.abortTransaction();
+    } catch {
+      // ignore
+    }
+
+    if (error.code === 11000) {
+      return {
+        success: false,
+        statusCode: 400,
+        error: "This transaction has already been used.",
+      };
+    }
+
+    return {
+      success: false,
+      statusCode: 500,
+      error: error.message || "Failed to process deposit",
+    };
+  } finally {
+    session.endSession();
+  }
+};
+
 const handleWithdrawFlowText = async (message, text) => {
   const telegramId = String(message.from.id);
   const chatId = message.chat.id;
@@ -877,6 +1167,65 @@ const handleWithdrawFlowText = async (message, text) => {
   return false;
 };
 
+const handleDepositFlowText = async (message, text) => {
+  const telegramId = String(message.from.id);
+  const chatId = message.chat.id;
+  const flow = depositFlowByTelegramId.get(telegramId);
+  if (!flow) return false;
+
+  if (text.startsWith("/cancel")) {
+    depositFlowByTelegramId.delete(telegramId);
+    await sendBotMessage(chatId, "❌ Deposit cancelled.");
+    return true;
+  }
+
+  if (flow.step === "awaiting_bank_method") {
+    await sendBotMessage(chatId, "Please choose a deposit method from the buttons.");
+    return true;
+  }
+
+  if (flow.step === "awaiting_sms") {
+    if (text.startsWith("/")) {
+      await sendBotMessage(
+        chatId,
+        "Please paste the full payment SMS message, or send /cancel.",
+      );
+      return true;
+    }
+
+    await sendBotMessage(
+      chatId,
+      "Deposit request received. Your top-up will be done in 1 minute.",
+    );
+
+    const result = await createTelegramDeposit({
+      userId: flow.userId,
+      provider: flow.provider,
+      smsText: text,
+      receiverAccountName: flow.receiverAccountName,
+      receiverPhoneNumber: flow.receiverPhoneNumber,
+      minAmount: flow.minAmount,
+      maxAmount: flow.maxAmount,
+      chatId,
+    });
+
+    depositFlowByTelegramId.delete(telegramId);
+
+    if (!result.success) {
+      await sendBotMessage(chatId, `❌ ${result.error}`);
+      return true;
+    }
+
+    await sendBotMessage(
+      chatId,
+      `✅ Deposit successful!\n\nAmount: ${Math.trunc(result.amount)} Br\nTransaction: ${result.transactionId}\nNew balance: ${Math.trunc(result.balance)} Br`,
+    );
+    return true;
+  }
+
+  return false;
+};
+
 /**
  * Handle /invite command - return user's referral link with share button
  */
@@ -962,8 +1311,16 @@ export const processBotUpdate = async (update) => {
       console.log("💬 Message received:", text);
       console.log("📱 Contact shared:", contact ? "Yes" : "No");
 
-      // Active in-chat withdrawal flow
+      // Active in-chat deposit/withdrawal flows
       if (!contact && text) {
+        const consumedByDepositFlow = await handleDepositFlowText(
+          update.message,
+          text.trim(),
+        );
+        if (consumedByDepositFlow) {
+          return;
+        }
+
         const consumedByWithdrawFlow = await handleWithdrawFlowText(
           update.message,
           text.trim(),
@@ -1184,6 +1541,11 @@ export const processBotUpdate = async (update) => {
       }
       if (text.startsWith("/cancel")) {
         const telegramId = String(update.message.from.id);
+        if (depositFlowByTelegramId.has(telegramId)) {
+          depositFlowByTelegramId.delete(telegramId);
+          await sendBotMessage(update.message.chat.id, "❌ Deposit cancelled.");
+          return;
+        }
         if (withdrawFlowByTelegramId.has(telegramId)) {
           withdrawFlowByTelegramId.delete(telegramId);
           await sendBotMessage(update.message.chat.id, "❌ Withdrawal cancelled.");
