@@ -217,6 +217,13 @@ export const handleCallbackQuery = async (callbackQuery) => {
       await sendBotMessage(chatId, "⚠️ Invalid deposit method.");
       return;
     }
+    if (!method.accountName || !method.phoneNumber) {
+      await sendBotMessage(
+        chatId,
+        "⚠️ Selected deposit account is not configured. Please contact support.",
+      );
+      return;
+    }
 
     depositFlowByTelegramId.set(telegramId, {
       ...flow,
@@ -231,8 +238,8 @@ export const handleCallbackQuery = async (callbackQuery) => {
       chatId,
       getDepositInstructionText({
         providerLabel: method.label,
-        phoneNumber: flow.receiverPhoneNumber,
-        accountName: flow.receiverAccountName,
+        phoneNumber: method.phoneNumber,
+        accountName: method.accountName,
         minAmount: flow.minAmount,
         maxAmount: flow.maxAmount,
       }),

@@ -107,6 +107,9 @@ async function verifyTransaction(provider, payload) {
     if (!transactionNumber) {
       throw new Error("Could not extract transaction ID from the provided SMS");
     }
+    console.log(
+      `[verifyTransaction] provider=${normalizedProvider} extractedTransactionId=${transactionNumber}`
+    );
 
     if (normalizedProvider === "cbebirr") {
       const extractedPhone = extractPhoneNumberFromSms(payload.referenceId);
