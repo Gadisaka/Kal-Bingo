@@ -88,6 +88,22 @@ function parseAmount(rawAmount) {
   return Number.isFinite(num) ? num : null;
 }
 
+function extractApiMessage(payload) {
+  if (!payload) return "";
+  if (typeof payload === "string") return payload;
+  if (typeof payload !== "object") return "";
+
+  return (
+    payload.message ||
+    payload.error ||
+    payload.detail ||
+    payload.reason ||
+    payload.data?.message ||
+    payload.data?.error ||
+    ""
+  );
+}
+
 /**
  * Verify a transaction from Telebirr or CBE Birr
  *
@@ -102,12 +118,13 @@ function parseAmount(rawAmount) {
  */
 async function verifyTransaction(provider, payload) {
   let extractedReference = "";
+  let normalizedProvider = "";
   try {
     if (!API_KEY) {
       throw new Error("VERIFY_API_KEY is not configured");
     }
 
-    const normalizedProvider = normalizeProvider(provider);
+    normalizedProvider = normalizeProvider(provider);
     if (!normalizedProvider) {
       throw new Error("Provider must be 'telebirr' or 'cbebirr'");
     }
@@ -196,9 +213,24 @@ async function verifyTransaction(provider, payload) {
         ? responseData.success
         : String(nestedData.transactionStatus || "").toLowerCase() === "completed";
 
+    if (!isSuccess) {
+      const message =
+        extractApiMessage(responseData) ||
+        extractApiMessage(nestedData) ||
+        "Transaction verification failed";
+
+      return {
+        success: false,
+        message,
+        referenceId: transactionNumber,
+        data: responseData,
+        raw: responseData,
+      };
+    }
+
     return {
       success: isSuccess,
-      message: responseData.message,
+      message: extractApiMessage(responseData),
       referenceId: transactionNumber,
       data: {
         ...nestedData,
@@ -208,15 +240,11 @@ async function verifyTransaction(provider, payload) {
     };
   } catch (err) {
     const apiErrorPayload = err.response?.data;
-    let detailedMessage = err.response?.data?.message || err.message;
-
-    if (!err.response?.data?.message && apiErrorPayload) {
-      try {
-        detailedMessage = JSON.stringify(apiErrorPayload);
-      } catch {
-        // keep fallback message
-      }
-    }
+    const apiMessage = extractApiMessage(apiErrorPayload);
+    const detailedMessage = apiMessage || err.message || "Transaction verification failed";
+    console.error(
+      `[verifyTransaction] failed provider=${normalizedProvider || "unknown"} ref=${extractedReference || "none"} status=${err.response?.status || "n/a"} message=${detailedMessage}`
+    );
 
     return {
       success: false,

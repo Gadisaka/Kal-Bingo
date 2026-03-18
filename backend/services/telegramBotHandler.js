@@ -1228,10 +1228,7 @@ const handleWithdrawFlowText = async (message, text) => {
     withdrawFlowByTelegramId.delete(telegramId);
 
     if (!result.success) {
-      const referenceHint = result.extractedReference
-        ? `\nRef: ${result.extractedReference}`
-        : "";
-      await sendBotMessage(chatId, `❌ ${result.error}${referenceHint}`);
+      await sendBotMessage(chatId, `❌ ${result.error}`);
       return true;
     }
 
@@ -1297,7 +1294,10 @@ const handleDepositFlowText = async (message, text) => {
     depositFlowByTelegramId.delete(telegramId);
 
     if (!result.success) {
-      await sendBotMessage(chatId, `❌ ${result.error}`);
+      const referenceHint = result.extractedReference
+        ? `\nRef: ${result.extractedReference}`
+        : "";
+      await sendBotMessage(chatId, `❌ ${result.error}${referenceHint}`);
       return true;
     }
 
