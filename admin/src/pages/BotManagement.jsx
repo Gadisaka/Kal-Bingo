@@ -686,7 +686,7 @@ const BotManagement = () => {
                                     }
                                     className="w-full rounded border-gray-300 border p-1.5"
                                     min="0"
-                                    max="100"
+                                    max="400"
                                   />
                                 </div>
                                 <div>
@@ -706,7 +706,7 @@ const BotManagement = () => {
                                     }
                                     className="w-full rounded border-gray-300 border p-1.5"
                                     min="0"
-                                    max="100"
+                                    max="400"
                                   />
                                 </div>
                               </div>

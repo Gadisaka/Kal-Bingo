@@ -9,6 +9,7 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Howl } from "howler";
 import { socketClient } from "../sockets/socket";
 import { bingoCards } from "../libs/BingoCards";
+import { API_URL } from "../constant";
 import { useAuth } from "../context/AuthContext";
 import { NumberCounter } from "../libs/NumberCounter";
 import { useBingoAudio } from "../hooks/useBingoAudio";
@@ -121,6 +122,7 @@ export default function PlayingRoom() {
   // Notification State
   const [notifications, setNotifications] = useState([]);
   const [isCardLocked, setIsCardLocked] = useState(false);
+  const [systemWinCutPercent, setSystemWinCutPercent] = useState(null);
 
   // Notification helper function
   const showNotification = useCallback((message, type = "info") => {
@@ -165,6 +167,7 @@ export default function PlayingRoom() {
     latestY: 0,
     pointerId: null,
   });
+  const fastWinToastShownRef = useRef(false);
 
   // --- ANIMATION ---
   const animateGhostBall = useCallback((ballData, nextBallData) => {
@@ -330,6 +333,28 @@ export default function PlayingRoom() {
     }
   }, [systemWinnerData, persistCardLockState]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchSystemWinCut = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/settings/system-games`);
+        const data = await res.json();
+        const wc = Number(data?.data?.winCut ?? data?.winCut);
+        if (!cancelled && !Number.isNaN(wc) && wc >= 0) {
+          setSystemWinCutPercent(wc);
+        }
+      } catch {
+        // Keep fallback value from navigation/default.
+      }
+    };
+
+    fetchSystemWinCut();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // --- INITIALIZE STOPGAME SOUND ---
   useEffect(() => {
     if (!stopgameSoundRef.current) {
@@ -390,6 +415,7 @@ export default function PlayingRoom() {
   // Reset stopgame ref when room changes (for new games)
   useEffect(() => {
     hasPlayedStopgameRef.current = false;
+    fastWinToastShownRef.current = false;
   }, [gameRoomId]);
 
   // Winner modal countdown: hide modal and redirect all players after 10s
@@ -589,6 +615,17 @@ export default function PlayingRoom() {
             : d?.winner
               ? [d.winner]
               : [];
+          const didCurrentUserWin = normalizedWinners.some(
+            (winner) => String(winner?.userId) === String(user?.id),
+          );
+          if (didCurrentUserWin) {
+            if (!fastWinToastShownRef.current) {
+              showNotification("🎉🎉you won 🎉🎉", "success");
+              fastWinToastShownRef.current = true;
+            }
+          } else if (!isSpectator) {
+            showNotification("You lost this game", "warning");
+          }
           const normalizedTotalPrize =
             Number(d?.totalPrize ?? d?.prize ?? 0) || 0;
           const normalizedSplitPrize =
@@ -609,10 +646,10 @@ export default function PlayingRoom() {
       },
       "bingo-claim-accepted": () => {
         persistCardLockState(true);
-        showNotification(
-          "Bingo claim received. Waiting for next call.",
-          "info",
-        );
+        if (!isSpectator && !fastWinToastShownRef.current) {
+          showNotification("🎉🎉you won 🎉🎉", "success");
+          fastWinToastShownRef.current = true;
+        }
       },
       "bingo-no-win": () => {
         persistCardLockState(true);
@@ -646,6 +683,7 @@ export default function PlayingRoom() {
     isSpectator,
     navigate,
     persistCardLockState,
+    user?.id,
     winnerEventData,
     systemWinnerData,
   ]);
@@ -796,14 +834,16 @@ export default function PlayingRoom() {
   const navCartelasCount = navigationState?.cartelasCount;
   const navPrize = navigationState?.prize;
   const navWinCutPercent = navigationState?.winCutPercent ?? 10;
+  const effectiveWinCutPercent =
+    typeof systemWinCutPercent === "number" ? systemWinCutPercent : navWinCutPercent;
 
   const _calculatePrizeWithWinCut = useCallback(
     (rawPrize) => {
       if (!rawPrize || rawPrize === 0) return 0;
-      const winCut = navWinCutPercent;
+      const winCut = effectiveWinCutPercent;
       return Math.max(0, rawPrize - (rawPrize * winCut) / 100);
     },
-    [navWinCutPercent],
+    [effectiveWinCutPercent],
   );
 
   // Calculate prize and player count for display
@@ -863,7 +903,7 @@ export default function PlayingRoom() {
 
     // Calculate pot and prize
     const pot = stake * cartelasCount;
-    const winCut = navWinCutPercent;
+    const winCut = effectiveWinCutPercent;
     const prize = Math.max(0, pot - (pot * winCut) / 100);
 
     return prize;
@@ -872,7 +912,7 @@ export default function PlayingRoom() {
     allRoomCartelas,
     navStake,
     navCartelasCount,
-    navWinCutPercent,
+    effectiveWinCutPercent,
     navPrize,
     playerCount,
     isSpectator,

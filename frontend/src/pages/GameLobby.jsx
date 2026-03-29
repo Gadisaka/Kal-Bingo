@@ -44,6 +44,7 @@ export default function GameLobby() {
   const joinTimeoutRef = useRef(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const autoJoinFired = useRef(false);
+  const [isAutoJoinRouting, setIsAutoJoinRouting] = useState(false);
 
   // Extract betAmounts and maxPlayers from settings
   const betAmounts = gameSettings.gameStakes;
@@ -184,6 +185,7 @@ export default function GameLobby() {
         joinTimeoutRef.current = null;
       }
       setJoinLoading(null);
+      setIsAutoJoinRouting(false);
       alert(
         reason === "already_joined"
           ? "You are already in this room."
@@ -200,6 +202,7 @@ export default function GameLobby() {
         joinTimeoutRef.current = null;
       }
       setJoinLoading(null);
+      setIsAutoJoinRouting(false);
       navigate(`/waiting/${room.id}`);
     };
 
@@ -210,6 +213,7 @@ export default function GameLobby() {
         joinTimeoutRef.current = null;
       }
       setJoinLoading(null);
+      setIsAutoJoinRouting(false);
       const cartelasCount = Object.keys(room.selectedCartelas || {}).length;
       const stake = room.betAmount || 0;
       navigate(`/playing/${room.id}`, {
@@ -233,6 +237,7 @@ export default function GameLobby() {
         joinTimeoutRef.current = null;
       }
       setJoinLoading(null);
+      setIsAutoJoinRouting(false);
       const cartelasCount = Object.keys(room.selectedCartelas || {}).length;
       const stake = room.betAmount || 0;
       navigate(`/playing/${room.id}`, {
@@ -256,6 +261,7 @@ export default function GameLobby() {
         joinTimeoutRef.current = null;
       }
       setJoinLoading(null);
+      setIsAutoJoinRouting(false);
       alert(err?.message || "Failed to join. Please try again.");
     };
 
@@ -266,6 +272,7 @@ export default function GameLobby() {
         joinTimeoutRef.current = null;
       }
       setJoinLoading(null);
+      setIsAutoJoinRouting(false);
       const cartelasCount = Object.keys(room.selectedCartelas || {}).length;
       const stake = room.betAmount || 0;
       navigate(`/playing/${room.id}`, {
@@ -289,6 +296,7 @@ export default function GameLobby() {
         joinTimeoutRef.current = null;
       }
       setJoinLoading(null);
+      setIsAutoJoinRouting(false);
       socket.emit("system:getRooms");
       alert(
         reason === "room_not_found" || reason === "not_playing"
@@ -304,6 +312,7 @@ export default function GameLobby() {
         joinTimeoutRef.current = null;
       }
       setJoinLoading(null);
+      setIsAutoJoinRouting(false);
       socket.emit("system:getRooms");
       alert(
         reason === "room_not_found" || reason === "not_playing"
@@ -418,22 +427,41 @@ export default function GameLobby() {
   // Auto-join from Telegram /play command (?autoJoin=<stake>)
   useEffect(() => {
     const autoJoinStake = searchParams.get("autoJoin");
-    if (!autoJoinStake || !user || autoJoinFired.current) return;
+    if (!autoJoinStake) return;
+
+    if (!user || autoJoinFired.current) return;
 
     const stake = Number(autoJoinStake);
-    if (!stake || !betAmounts.includes(stake)) return;
+    if (!stake || !betAmounts.includes(stake)) {
+      setIsAutoJoinRouting(false);
+      setSearchParams({}, { replace: true });
+      return;
+    }
 
-    // Wait for rooms to load so we know if the stake room is joinable
-    const room = rooms.find((r) => r.betAmount === stake);
-    if (!room) return; // rooms haven't loaded yet — effect will re-run when they do
+    setIsAutoJoinRouting(true);
+
+    // Wait until at least one active room is known for this stake, then join it.
+    // Backend joinRoom handles:
+    // - waiting room -> joins waiting
+    // - playing only -> joins as spectator
+    const hasStakeRoom = rooms.some((r) => r.betAmount === stake);
+    if (!hasStakeRoom) return;
 
     autoJoinFired.current = true;
     setSearchParams({}, { replace: true }); // clean the URL
-
-    if (room.status === "waiting") {
-      joinRoom(stake);
-    }
+    joinRoom(stake);
   }, [searchParams, user, betAmounts, rooms, setSearchParams, joinRoom]);
+
+  useEffect(() => {
+    if (!searchParams.get("autoJoin")) return;
+    if (!user) {
+      setIsAutoJoinRouting(false);
+      return;
+    }
+    if (!autoJoinFired.current) {
+      setIsAutoJoinRouting(true);
+    }
+  }, [searchParams, user]);
 
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(() => {
@@ -443,6 +471,24 @@ export default function GameLobby() {
   }, [socket]);
 
   return (
+    isAutoJoinRouting ? (
+      <div
+        className="min-h-screen px-2 pt-2 pb-4 flex items-center justify-center"
+        style={{ backgroundColor: UI_COLORS.pageBg }}
+      >
+        <div
+          className="rounded-2xl border px-4 py-3 inline-flex items-center gap-2 text-sm font-black"
+          style={{
+            backgroundColor: UI_COLORS.tileBg,
+            borderColor: UI_COLORS.tileBorder,
+            color: UI_COLORS.textDark,
+          }}
+        >
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Joining selected stake room...
+        </div>
+      </div>
+    ) : (
     <div
       className="min-h-screen px-2 pt-2 pb-4"
       style={{ backgroundColor: UI_COLORS.pageBg }}
@@ -641,5 +687,6 @@ export default function GameLobby() {
         </div>
       </div>
     </div>
+    )
   );
 }

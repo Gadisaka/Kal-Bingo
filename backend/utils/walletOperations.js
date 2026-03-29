@@ -255,17 +255,14 @@ export const atomicCreditBalance = async (
   meta = {},
   options = {}
 ) => {
-  // Handle old signature where 5th param was session directly
+  // Handle both signatures:
+  // - New: options = { session, skipTransactionLog }
+  // - Legacy: options is a mongoose session object
   let session = null;
   let skipTransactionLog = false;
 
-  if (
-    options &&
-    typeof options === "object" &&
-    !options.session &&
-    !options.skipTransactionLog
-  ) {
-    // Old signature: session passed directly
+  if (options && typeof options?.inTransaction === "function") {
+    // Legacy signature: session passed directly as 5th argument
     session = options;
   } else {
     session = options?.session || null;

@@ -15,7 +15,7 @@ const roomsByBet = new Map();
 const roomsById = new Map();
 
 const DEFAULT_BET_AMOUNTS = [10, 20, 50, 100];
-const MAX_PLAYERS = 100;
+const MAX_PLAYERS = 400;
 
 function docToRoom(doc) {
   return {
@@ -51,7 +51,7 @@ export function getAvailableSystemRoom(betAmount) {
   const list = roomsByBet.get(betAmount) || [];
   return (
     list.find(
-      (r) => r.status === "waiting" && r.joinedPlayers.length < r.maxPlayers
+      (r) => r.status === "waiting" && r.joinedPlayers.length < r.maxPlayers,
     ) || null
   );
 }
@@ -74,7 +74,7 @@ export async function createSystemRoom(betAmount) {
   const room = docToRoom(doc.toObject());
   indexRoom(room);
   console.log(
-    `[roomManager] Created new system room for bet ${betAmount}: ${room.id}`
+    `[roomManager] Created new system room for bet ${betAmount}: ${room.id}`,
   );
   return room;
 }
@@ -89,7 +89,7 @@ export async function loadExistingSystemRooms() {
   }).lean();
   for (const doc of docs) indexRoom(docToRoom(doc));
   console.log(
-    `[roomManager] Loaded ${docs.length} existing system room(s) from database`
+    `[roomManager] Loaded ${docs.length} existing system room(s) from database`,
   );
   return getSystemRooms();
 }
@@ -117,13 +117,13 @@ export async function joinSystemRoom(user, betAmount) {
   console.log("Target room ID:", target.id);
   console.log(
     "Current players in room:",
-    JSON.stringify(target.joinedPlayers, null, 2)
+    JSON.stringify(target.joinedPlayers, null, 2),
   );
 
   // Prevent duplicate join (should not happen after removeUserFromAllRooms)
   const alreadyInRoom = target.joinedPlayers.some((p) => {
     console.log(
-      `Comparing: p.userId (${p.userId}) === user.userId (${user.userId})`
+      `Comparing: p.userId (${p.userId}) === user.userId (${user.userId})`,
     );
     return p.userId === user.userId;
   });
@@ -147,7 +147,7 @@ export async function joinSystemRoom(user, betAmount) {
   console.log("✅ User can join. Adding to room...");
   console.log(
     "[joinSystemRoom] Before Join:",
-    JSON.stringify(target.joinedPlayers)
+    JSON.stringify(target.joinedPlayers),
   );
   const playerData = {
     userId: user.userId,
@@ -158,13 +158,13 @@ export async function joinSystemRoom(user, betAmount) {
   target.joinedPlayers.push(playerData);
   console.log(
     "[joinSystemRoom] After Join:",
-    JSON.stringify(target.joinedPlayers)
+    JSON.stringify(target.joinedPlayers),
   );
 
   if (target.joinedPlayers.length === target.maxPlayers) {
     target.status = "playing";
     console.log(
-      `[joinSystemRoom] Room ${target.id} became full. Status set to playing.`
+      `[joinSystemRoom] Room ${target.id} became full. Status set to playing.`,
     );
   } else if (target.status !== "waiting") {
     target.status = "waiting";
@@ -178,11 +178,11 @@ export async function joinSystemRoom(user, betAmount) {
         gameStatus: target.status,
       },
     },
-    { new: true }
+    { new: true },
   );
   console.log(
     "[joinSystemRoom] DB Update Result:",
-    dbUpdate ? "Success" : "Failed"
+    dbUpdate ? "Success" : "Failed",
   );
   console.log(
     "Final room state:",
@@ -194,8 +194,8 @@ export async function joinSystemRoom(user, betAmount) {
         playerCount: target.joinedPlayers.length,
       },
       null,
-      2
-    )
+      2,
+    ),
   );
   console.log("========== JOIN SYSTEM ROOM DEBUG END ==========\n");
 
@@ -277,8 +277,8 @@ export async function cleanupStaleWaitingRooms() {
         `🧹 [roomManager] Found stale waiting room ${room.id} with ${
           room.joinedPlayers.length
         } player(s), created ${Math.round(
-          (Date.now() - room.createdAt.getTime()) / 60000
-        )} minutes ago`
+          (Date.now() - room.createdAt.getTime()) / 60000,
+        )} minutes ago`,
       );
 
       const refundedPlayers = [];
@@ -293,7 +293,7 @@ export async function cleanupStaleWaitingRooms() {
         // Group cartelas by userId to calculate total refund per player
         const refundsByUser = {};
         for (const [cartelaId, selection] of Object.entries(
-          room.selectedCartelas
+          room.selectedCartelas,
         )) {
           const userId = String(selection.userId);
           if (!refundsByUser[userId]) {
@@ -326,19 +326,19 @@ export async function cleanupStaleWaitingRooms() {
               } catch (txErr) {
                 console.error(
                   `[roomManager] Failed to log refund transaction for user ${userId}:`,
-                  txErr.message
+                  txErr.message,
                 );
               }
 
               refundedPlayers.push({ userId, amount: totalRefund });
               console.log(
-                `💰 [roomManager] Refunded ${totalRefund} to user ${userId} for stale room ${room.id}`
+                `💰 [roomManager] Refunded ${totalRefund} to user ${userId} for stale room ${room.id}`,
               );
             }
           } catch (refundErr) {
             console.error(
               `[roomManager] Failed to refund user ${userId}:`,
-              refundErr.message
+              refundErr.message,
             );
           }
         }
@@ -400,7 +400,7 @@ export async function selectCartela(roomId, userId, cartelaId) {
 
   // Enforce max 4 cartelas per player
   const playerCartelaCount = Object.values(room.selectedCartelas || {}).filter(
-    (c) => String(c.userId) === String(userId)
+    (c) => String(c.userId) === String(userId),
   ).length;
   if (playerCartelaCount >= 4) {
     return { success: false, error: "max_cartelas_reached" };
@@ -429,7 +429,7 @@ export async function selectCartela(roomId, userId, cartelaId) {
       stake,
       "GAME_STAKE",
       { roomId, gameType: "system", stake, cartelaId },
-      { session, skipTransactionLog: true }
+      { session, skipTransactionLog: true },
     );
 
     if (!deductResult.success) {
@@ -453,7 +453,7 @@ export async function selectCartela(roomId, userId, cartelaId) {
     await GameRoom.findByIdAndUpdate(
       room.id,
       { $set: { selectedCartelas: room.selectedCartelas } },
-      { session }
+      { session },
     );
 
     // Commit the transaction
@@ -474,7 +474,7 @@ export async function selectCartela(roomId, userId, cartelaId) {
 
     console.error(
       "[selectCartela] Transaction failed, rolled back:",
-      e.message
+      e.message,
     );
     return { success: false, error: "transaction_failed" };
   } finally {
@@ -493,7 +493,7 @@ export async function logSystemGameStakeTransactions(roomId) {
   const stakeDeductions = [];
 
   for (const [cartelaId, selection] of Object.entries(
-    room.selectedCartelas || {}
+    room.selectedCartelas || {},
   )) {
     stakeDeductions.push({
       userId: selection.userId,
@@ -536,13 +536,13 @@ export async function deselectCartela(roomId, userId, cartelaId) {
         stake,
         roomId,
         "system",
-        "cartela_deselection"
+        "cartela_deselection",
       );
 
       if (!refundResult.success) {
         console.error(
           `[deselectCartela] Refund failed for user ${userId}:`,
-          refundResult.error
+          refundResult.error,
         );
         // Continue with deselection even if refund fails to keep game state consistent
         // But log the error for audit purposes
@@ -563,6 +563,10 @@ export async function deselectCartela(roomId, userId, cartelaId) {
     allCartelas: room.selectedCartelas,
     refunded: refundResult?.success || false,
     balanceAfter: refundResult?.balanceAfter,
+    bonusAfter:
+      typeof refundResult?.wallet?.bonus === "number"
+        ? refundResult.wallet.bonus
+        : undefined,
   };
 }
 
@@ -651,7 +655,7 @@ export async function removeUserFromAllRooms(userId) {
 
   for (const room of roomsById.values()) {
     const playerIndex = room.joinedPlayers.findIndex(
-      (p) => p.userId === userId
+      (p) => p.userId === userId,
     );
     if (playerIndex !== -1) {
       room.joinedPlayers.splice(playerIndex, 1);

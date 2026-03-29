@@ -87,11 +87,11 @@ function generateConfigForStake(stakeAmount) {
     const factor = boostByWindow[windowDef.key] ?? 1;
     const minBots = Math.max(
       0,
-      Math.min(100, Math.round(config.min_bots * factor))
+      Math.min(400, Math.round(config.min_bots * factor))
     );
     const maxBots = Math.max(
       minBots,
-      Math.min(100, Math.round(config.max_bots * factor))
+      Math.min(400, Math.round(config.max_bots * factor))
     );
     windowRanges[windowDef.key] = {
       min_bots: minBots,

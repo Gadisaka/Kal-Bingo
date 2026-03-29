@@ -43,6 +43,7 @@ export default function WaitingRoom() {
   const [winCutPercent, setWinCutPercent] = useState(10);
   const winCutPercentRef = useRef(10);
   const [walletBalance, setWalletBalance] = useState(0);
+  const [isWalletLoading, setIsWalletLoading] = useState(true);
   //  Prize
 
   // Handle cartela selection events
@@ -455,17 +456,23 @@ export default function WaitingRoom() {
   useEffect(() => {
     let cancelled = false;
     const fetchWalletBalance = async () => {
-      if (!user) return;
+      if (!user) {
+        if (!cancelled) setIsWalletLoading(false);
+        return;
+      }
+      if (!cancelled) setIsWalletLoading(true);
       try {
         const res = await axios.get(`${API_URL}/api/wallet/me`);
         if (!cancelled) {
           const total =
             Number(res.data?.balance || 0) + Number(res.data?.bonus || 0);
           setWalletBalance(total);
+          setIsWalletLoading(false);
         }
       } catch {
         if (!cancelled) {
           setWalletBalance(Number(user?.balance || 0));
+          setIsWalletLoading(false);
         }
       }
     };
@@ -475,6 +482,26 @@ export default function WaitingRoom() {
       cancelled = true;
     };
   }, [user]);
+
+  useEffect(() => {
+    if (!socket || !user) return;
+
+    const handleWalletUpdated = ({ userId, total, balance, bonus }) => {
+      if (String(userId) !== String(user.id)) return;
+      const nextTotal =
+        typeof total === "number"
+          ? total
+          : Number(balance || 0) + Number(bonus || 0);
+      setWalletBalance(Number(nextTotal || 0));
+      setIsWalletLoading(false);
+    };
+
+    socket.on("wallet:updated", handleWalletUpdated);
+
+    return () => {
+      socket.off("wallet:updated", handleWalletUpdated);
+    };
+  }, [socket, user]);
 
   useEffect(() => {
     // Debug logs to help diagnose join/redirect issue
@@ -595,6 +622,14 @@ export default function WaitingRoom() {
     const isCurrentlySelected = selectedCartelas.includes(num);
     const isTakenByOther =
       takenCartelas[num] && takenCartelas[num].userId !== userId;
+    const isSimulatedBotActive =
+      simulatedBotCartelasSet.has(num) && !isCurrentlySelected;
+
+    if (isSimulatedBotActive) {
+      setSelectionError("This card is currently being previewed by another player.");
+      setTimeout(() => setSelectionError(null), 2000);
+      return;
+    }
 
     console.log("\n=== TOGGLE CARTELA DEBUG ===");
     console.log("Checking cartela:", num, "(type:", typeof num, ")");
@@ -697,7 +732,11 @@ export default function WaitingRoom() {
           >
             <p className="text-xs font-bold">Wallet</p>
             <p className="mt-1 text-xl font-black leading-none">
-              {Math.trunc(Number(walletBalance || 0)).toLocaleString()}
+              {isWalletLoading ? (
+                <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent align-middle" />
+              ) : (
+                Math.trunc(Number(walletBalance || 0)).toLocaleString()
+              )}
             </p>
           </div>
 
@@ -785,9 +824,13 @@ export default function WaitingRoom() {
                     <button
                       key={num}
                       onClick={() => toggleCartelaSelection(num)}
-                      disabled={isTakenByOther || isSelectionLocked}
+                      disabled={
+                        isTakenByOther || isSelectionLocked || isSimulatedBotActive
+                      }
                       className={`h-11 rounded-xl border text-base font-black leading-none transition-colors ${
-                        isTakenByOther ? "cursor-not-allowed" : ""
+                        isTakenByOther || isSimulatedBotActive
+                          ? "cursor-not-allowed"
+                          : ""
                       }`}
                       style={{
                         borderColor: UI_COLORS.tileBorder,

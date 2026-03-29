@@ -5,7 +5,7 @@ import BotGameConfig, {
 import User from "../model/user.js";
 import Wallet from "../model/wallet.js";
 
-const MAX_BOTS_PER_WINDOW = 100;
+const MAX_BOTS_PER_WINDOW = 400;
 
 function normalizeWindowRanges(timeWindowBots, fallbackRanges) {
   const allowedKeys = new Set(BOT_TIME_WINDOWS.map((w) => w.key));

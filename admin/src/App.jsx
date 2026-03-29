@@ -14,6 +14,7 @@ import Ads from "./pages/Ads";
 import Revenue from "./pages/Revenue";
 import BotManagement from "./pages/BotManagement";
 import Withdrawals from "./pages/Withdrawals";
+import Deposits from "./pages/Deposits";
 
 const ProtectedRoute = ({ children, allowedRoles, path }) => {
   const { user, loading } = useAuth();
@@ -102,6 +103,17 @@ function App() {
                   path="/withdrawals"
                 >
                   <Withdrawals />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/deposits"
+              element={
+                <ProtectedRoute
+                  allowedRoles={["admin", "subadmin"]}
+                  path="/deposits"
+                >
+                  <Deposits />
                 </ProtectedRoute>
               }
             />

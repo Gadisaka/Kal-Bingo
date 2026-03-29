@@ -7,7 +7,7 @@ export const BOT_TIME_WINDOWS = [
   { key: "night", startHour: 18, endHour: 23, label: "18:00-23:59" },
 ];
 
-const MAX_BOTS_PER_WINDOW = 100;
+const MAX_BOTS_PER_WINDOW = 400;
 
 export function buildDefaultTimeWindowBots(minBots = 2, maxBots = 5) {
   return BOT_TIME_WINDOWS.reduce((acc, windowDef) => {

@@ -348,8 +348,23 @@ export const getAllDeposits = async (req, res) => {
 
     const total = await Deposit.countDocuments(query);
 
+    const statusCounts = await Deposit.aggregate([
+      { $group: { _id: "$status", count: { $sum: 1 } } },
+    ]);
+
+    const counts = {
+      pending: 0,
+      verified: 0,
+      failed: 0,
+      expired: 0,
+    };
+    statusCounts.forEach((s) => {
+      counts[s._id] = s.count;
+    });
+
     res.json({
       success: true,
+      counts,
       deposits: deposits.map((d) => ({
         id: d._id,
         transactionId: d.transactionId,

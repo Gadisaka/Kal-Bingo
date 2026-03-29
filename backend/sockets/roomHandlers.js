@@ -43,6 +43,7 @@ import {
 const WINNER_REVEAL_DELAY_MS = 5000;
 const WINNER_DISPLAY_MS = 10000;
 const NEXT_GAME_START_DELAY_MS = WINNER_REVEAL_DELAY_MS + WINNER_DISPLAY_MS;
+const WINNER_CLAIM_WINDOW_MS = 5000;
 
 /**
  * Returns true if the room has at least one human (non-bot) player.
@@ -264,6 +265,7 @@ async function autoAssignCartelasForSystemRoom(io, roomId, room) {
 const calledNumbersByRoom = {};
 const calledNumbersIntervalByRoom = {};
 const pendingWinnerClaimsByRoom = {};
+const winnerClaimWindowByRoom = {};
 
 function getParticipantIdsFromRoom(room) {
   return (room?.joinedPlayers || []).map((p) =>
@@ -291,6 +293,24 @@ function addWinnerClaim(roomId, claim) {
   }
 
   pendingWinnerClaimsByRoom[roomId].push(claim);
+}
+
+function openWinnerClaimWindow(io, roomId, calledNumber) {
+  const current = winnerClaimWindowByRoom[roomId];
+  if (current && Number(current.calledNumber) === Number(calledNumber)) {
+    return;
+  }
+
+  winnerClaimWindowByRoom[roomId] = {
+    calledNumber: Number(calledNumber),
+    endsAt: Date.now() + WINNER_CLAIM_WINDOW_MS,
+  };
+
+  io.to(roomId).emit("bingo:claimWindowOpened", {
+    roomId,
+    calledNumber: Number(calledNumber),
+    durationMs: WINNER_CLAIM_WINDOW_MS,
+  });
 }
 
 async function collectBotWinnerClaims(roomId) {
@@ -391,6 +411,11 @@ async function finalizeCurrentBallWinners(io, roomId) {
     ).filter((c) => Number(c.calledNumber) !== Number(currentNumber));
     return false;
   }
+
+  pendingWinnerClaimsByRoom[roomId] = (
+    pendingWinnerClaimsByRoom[roomId] || []
+  ).filter((c) => Number(c.calledNumber) !== Number(currentNumber));
+  delete winnerClaimWindowByRoom[roomId];
 
   if (calledNumbersIntervalByRoom[roomId]) {
     clearInterval(calledNumbersIntervalByRoom[roomId]);
@@ -581,6 +606,19 @@ async function callRandomNumber(io, roomId) {
     return false;
   }
 
+  const claimWindow = winnerClaimWindowByRoom[roomId];
+  if (claimWindow) {
+    if (Date.now() < Number(claimWindow.endsAt)) {
+      return true;
+    }
+
+    delete winnerClaimWindowByRoom[roomId];
+    const finalizedAfterWindow = await finalizeCurrentBallWinners(io, roomId);
+    if (finalizedAfterWindow) {
+      return false;
+    }
+  }
+
   const finalizedPreviousBall = await finalizeCurrentBallWinners(io, roomId);
   if (finalizedPreviousBall) {
     return false;
@@ -733,7 +771,7 @@ function startNumberCallingInterval(io, roomId) {
         );
       }
     }
-  }, 3000); // Call a number every 3 seconds
+  }, 4000); // Call a number every 4 seconds
 }
 
 /**
@@ -1100,6 +1138,29 @@ export function registerRoomHandlers(io, socket) {
   // Countdown intervals per roomId (for real-time updates)
   const countdownIntervals =
     io.countdownIntervals || (io.countdownIntervals = new Map());
+
+  const emitWalletUpdate = async (
+    targetSocket,
+    userId,
+    reason = "wallet_sync",
+    cartelaId = null
+  ) => {
+    try {
+      const wallet = await Wallet.findOne({ user: String(userId) }).lean();
+      const balance = Number(wallet?.balance || 0);
+      const bonus = Number(wallet?.bonus || 0);
+      targetSocket.emit("wallet:updated", {
+        userId: String(userId),
+        balance,
+        bonus,
+        total: balance + bonus,
+        reason,
+        cartelaId,
+      });
+    } catch (walletErr) {
+      console.error("[sockets] Failed to emit wallet update:", walletErr.message);
+    }
+  };
 
   // Request current system rooms
   socket.on("system:getRooms", () => {
@@ -1804,6 +1865,7 @@ export function registerRoomHandlers(io, socket) {
         cartelaId,
         allCartelas: result.allCartelas,
       });
+      await emitWalletUpdate(socket, userId, "cartela_selected", cartelaId);
     } catch (err) {
       console.error("[sockets] select-cartela error:", err.message);
       socket.emit("error", { message: err.message });
@@ -1836,6 +1898,7 @@ export function registerRoomHandlers(io, socket) {
         cartelaId,
         allCartelas: result.allCartelas,
       });
+      await emitWalletUpdate(socket, userId, "cartela_deselected", cartelaId);
     } catch (err) {
       console.error("[sockets] deselect-cartela error:", err.message);
       socket.emit("error", { message: err.message });
@@ -1975,8 +2038,10 @@ export function registerRoomHandlers(io, socket) {
           userName,
           cartelaId,
           winningCells: result.winningCells,
+          calledNumber: currentNumber,
         });
         await collectBotWinnerClaims(roomId);
+        openWinnerClaimWindow(io, roomId, currentNumber);
         socket.emit("bingo-claim-accepted", {
           roomId,
           cartelaId,
@@ -2009,6 +2074,7 @@ export function registerRoomHandlers(io, socket) {
     }
     delete calledNumbersByRoom[roomId];
     delete pendingWinnerClaimsByRoom[roomId];
+    delete winnerClaimWindowByRoom[roomId];
   });
 
   // Cleanup on disconnect

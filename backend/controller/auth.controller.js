@@ -1,6 +1,9 @@
 import User from "../model/user.js";
 import OTP from "../model/otp.js";
 import AuthSession from "../model/authSession.js";
+import Wallet from "../model/wallet.js";
+import WalletTransaction from "../model/walletTransaction.js";
+import Settings from "../model/settings.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { getBotUsername } from "../services/telegramBotHandler.js";
@@ -26,6 +29,57 @@ const generateTempToken = (telegramId, telegramData) => {
     JWT_SECRET,
     { expiresIn: "15m" }
   );
+};
+
+const ensureSignupWalletWithWelcomeBonus = async (userId) => {
+  const userIdStr = String(userId);
+  const existingWallet = await Wallet.findOne({ user: userIdStr });
+  if (existingWallet) {
+    await User.findByIdAndUpdate(userIdStr, {
+      $set: { wallet: existingWallet._id },
+    });
+    return existingWallet;
+  }
+
+  let initialBonus = 0;
+  try {
+    const settings = await Settings.getSettings();
+    if (settings.welcomeBonus?.enabled && settings.welcomeBonus?.amount > 0) {
+      initialBonus = Number(settings.welcomeBonus.amount);
+    }
+  } catch (e) {
+    console.error(
+      "[auth] Failed to fetch welcome bonus settings during signup:",
+      e.message
+    );
+  }
+
+  const wallet = await Wallet.create({
+    user: userIdStr,
+    balance: 0,
+    bonus: initialBonus,
+  });
+
+  await User.findByIdAndUpdate(userIdStr, { $set: { wallet: wallet._id } });
+
+  if (initialBonus > 0) {
+    try {
+      await WalletTransaction.create({
+        user: userIdStr,
+        amount: initialBonus,
+        type: "ADMIN_ADJUST",
+        balanceAfter: 0,
+        meta: { reason: "welcome_bonus", source: "signup" },
+      });
+    } catch (e) {
+      console.error(
+        "[auth] Failed to log welcome bonus transaction during signup:",
+        e.message
+      );
+    }
+  }
+
+  return wallet;
 };
 
 // ============================================
@@ -546,6 +600,8 @@ export const linkPhoneDirect = async (req, res) => {
           console.log(`⚠️ Referral not applied: ${referralResult.error}`);
         }
       }
+
+      await ensureSignupWalletWithWelcomeBonus(user._id);
     }
 
     const token = generateToken(user._id, user.role);
@@ -668,6 +724,8 @@ export const verifyPhoneAndComplete = async (req, res) => {
           console.log(`⚠️ Referral not applied: ${referralResult.error}`);
         }
       }
+
+      await ensureSignupWalletWithWelcomeBonus(user._id);
     }
 
     // Delete used OTP
@@ -783,6 +841,8 @@ export const linkPhoneFromTelegram = async (req, res) => {
           console.log(`⚠️ Referral not applied: ${referralResult.error}`);
         }
       }
+
+      await ensureSignupWalletWithWelcomeBonus(user._id);
     }
 
     const token = generateToken(user._id, user.role);
@@ -1264,6 +1324,8 @@ export const checkBotAuth = async (req, res) => {
               console.log(`⚠️ Referral not applied: ${referralResult.error}`);
             }
           }
+
+          await ensureSignupWalletWithWelcomeBonus(user._id);
 
           const token = generateToken(user._id, user.role);
 
