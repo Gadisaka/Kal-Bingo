@@ -15,6 +15,7 @@
     "seed:admin": "node scripts/seedAdmin.js",
     "seed:bots": "node scripts/seedBots.js",
     "seed:bot-config": "node scripts/seedBotConfig.js",
+    "seed:bots-all": "node scripts/seedBotsAndConfig.js",
     "backfill:welcome-bonus": "node scripts/backfillWelcomeBonus.js",
     "fix:telegram-index": "node scripts/fixTelegramIdIndex.js",
     "test": "jest"

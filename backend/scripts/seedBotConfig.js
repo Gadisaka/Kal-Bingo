@@ -1,4 +1,6 @@
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import connectDB from "../config/db.js";
 import BotGameConfig, {
   BOT_TIME_WINDOWS,
@@ -7,6 +9,7 @@ import BotGameConfig, {
 import Settings from "../model/settings.js";
 
 dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
 
 /**
  * Generate bot config defaults based on stake amount
@@ -104,111 +107,122 @@ function generateConfigForStake(stakeAmount) {
 }
 
 const seedBotConfig = async () => {
-  try {
-    await connectDB();
-    console.log("🤖 Starting bot configuration seeding...\n");
+  await connectDB();
+  console.log("🤖 Starting bot configuration seeding...\n");
 
-    // Fetch game stakes from Settings
-    const settings = await Settings.getSettings();
-    const gameStakes = settings.systemGames?.gameStakes || [10, 20, 50, 100];
+  // Fetch game stakes from Settings
+  const settings = await Settings.getSettings();
+  const gameStakes = settings.systemGames?.gameStakes || [10, 20, 50, 100];
 
-    console.log(
-      `📋 Found ${gameStakes.length} game stakes in settings: ${gameStakes.join(
-        ", "
-      )} ETB\n`
-    );
+  console.log(
+    `📋 Found ${gameStakes.length} game stakes in settings: ${gameStakes.join(
+      ", "
+    )} ETB\n`
+  );
 
-    let created = 0;
-    let updated = 0;
-    let skipped = 0;
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
 
-    // Generate and seed config for each stake
-    for (const stakeAmount of gameStakes) {
-      const config = generateConfigForStake(stakeAmount);
+  // Generate and seed config for each stake
+  for (const stakeAmount of gameStakes) {
+    const config = generateConfigForStake(stakeAmount);
 
-      const existing = await BotGameConfig.findOne({
-        stake_amount: stakeAmount,
-      });
+    const existing = await BotGameConfig.findOne({
+      stake_amount: stakeAmount,
+    });
 
-      if (existing) {
-        // Update existing config only if there are meaningful changes
-        const hasChanges =
-          existing.min_bots !== config.min_bots ||
-          existing.max_bots !== config.max_bots ||
-          existing.bot_win_rate !== config.bot_win_rate ||
-          JSON.stringify(existing.time_window_bots || {}) !==
-            JSON.stringify(config.time_window_bots || {});
+    if (existing) {
+      // Update existing config only if there are meaningful changes
+      const hasChanges =
+        existing.min_bots !== config.min_bots ||
+        existing.max_bots !== config.max_bots ||
+        existing.bot_win_rate !== config.bot_win_rate ||
+        JSON.stringify(existing.time_window_bots || {}) !==
+          JSON.stringify(config.time_window_bots || {});
 
-        if (hasChanges) {
-          await BotGameConfig.findOneAndUpdate(
-            { stake_amount: stakeAmount },
-            { $set: config },
-            { new: true }
-          );
-          updated++;
-          console.log(`📝 Updated config for ${stakeAmount} ETB stake`);
-        } else {
-          skipped++;
-          console.log(
-            `⏭️  Skipped config for ${stakeAmount} ETB stake (no changes)`
-          );
-        }
+      if (hasChanges) {
+        await BotGameConfig.findOneAndUpdate(
+          { stake_amount: stakeAmount },
+          { $set: config },
+          { new: true }
+        );
+        updated++;
+        console.log(`📝 Updated config for ${stakeAmount} ETB stake`);
       } else {
-        // Create new config
-        await BotGameConfig.create(config);
-        created++;
+        skipped++;
         console.log(
-          `✅ Created config for ${stakeAmount} ETB stake (${config.bot_win_rate}% bot win rate)`
+          `⏭️  Skipped config for ${stakeAmount} ETB stake (no changes)`
         );
       }
-    }
-
-    // Clean up configs for stakes that no longer exist in settings
-    const allConfigs = await BotGameConfig.find();
-    const stakeSet = new Set(gameStakes);
-    let removed = 0;
-
-    for (const cfg of allConfigs) {
-      if (!stakeSet.has(cfg.stake_amount)) {
-        await BotGameConfig.findByIdAndDelete(cfg._id);
-        removed++;
-        console.log(
-          `🗑️  Removed config for ${cfg.stake_amount} ETB (stake no longer exists)`
-        );
-      }
-    }
-
-    console.log("\n🎉 Bot configuration seeding completed!");
-    console.log(`   - Created: ${created}`);
-    console.log(`   - Updated: ${updated}`);
-    console.log(`   - Skipped: ${skipped}`);
-    if (removed > 0) {
-      console.log(`   - Removed: ${removed} (orphaned configs)`);
-    }
-
-    // Display current configs
-    console.log("\n📋 Current bot configurations:");
-    const finalConfigs = await BotGameConfig.find().sort({ stake_amount: 1 });
-    for (const cfg of finalConfigs) {
+    } else {
+      // Create new config
+      await BotGameConfig.create(config);
+      created++;
       console.log(
-        `   ${cfg.stake_amount} ETB: ${cfg.min_bots}-${cfg.max_bots} bots, ${
-          cfg.bot_win_rate
-        }% win rate, ${cfg.is_active ? "ACTIVE" : "INACTIVE"}`
+        `✅ Created config for ${stakeAmount} ETB stake (${config.bot_win_rate}% bot win rate)`
       );
-      const ranges = cfg.time_window_bots || {};
-      for (const windowDef of BOT_TIME_WINDOWS) {
-        const range = ranges[windowDef.key];
-        if (!range) continue;
-        console.log(
-          `      - ${windowDef.key} (${windowDef.label}): ${range.min_bots}-${range.max_bots}`
-        );
-      }
     }
+  }
+
+  // Clean up configs for stakes that no longer exist in settings
+  const allConfigs = await BotGameConfig.find();
+  const stakeSet = new Set(gameStakes);
+  let removed = 0;
+
+  for (const cfg of allConfigs) {
+    if (!stakeSet.has(cfg.stake_amount)) {
+      await BotGameConfig.findByIdAndDelete(cfg._id);
+      removed++;
+      console.log(
+        `🗑️  Removed config for ${cfg.stake_amount} ETB (stake no longer exists)`
+      );
+    }
+  }
+
+  console.log("\n🎉 Bot configuration seeding completed!");
+  console.log(`   - Created: ${created}`);
+  console.log(`   - Updated: ${updated}`);
+  console.log(`   - Skipped: ${skipped}`);
+  if (removed > 0) {
+    console.log(`   - Removed: ${removed} (orphaned configs)`);
+  }
+
+  // Display current configs
+  console.log("\n📋 Current bot configurations:");
+  const finalConfigs = await BotGameConfig.find().sort({ stake_amount: 1 });
+  for (const cfg of finalConfigs) {
+    console.log(
+      `   ${cfg.stake_amount} ETB: ${cfg.min_bots}-${cfg.max_bots} bots, ${
+        cfg.bot_win_rate
+      }% win rate, ${cfg.is_active ? "ACTIVE" : "INACTIVE"}`
+    );
+    const ranges = cfg.time_window_bots || {};
+    for (const windowDef of BOT_TIME_WINDOWS) {
+      const range = ranges[windowDef.key];
+      if (!range) continue;
+      console.log(
+        `      - ${windowDef.key} (${windowDef.label}): ${range.min_bots}-${range.max_bots}`
+      );
+    }
+  }
+
+  return { created, updated, skipped, removed, totalConfigs: finalConfigs.length };
+};
+
+export { generateConfigForStake, seedBotConfig };
+
+const runFromCli = async () => {
+  try {
+    await seedBotConfig();
   } catch (error) {
     console.error("❌ Error seeding bot configurations:", error);
+    process.exitCode = 1;
   } finally {
-    process.exit(0);
+    process.exit();
   }
 };
 
-seedBotConfig();
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  runFromCli();
+}

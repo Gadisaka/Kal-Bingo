@@ -2,7 +2,6 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import AdmZip from "adm-zip";
 import connectDB from "../config/db.js";
 import User from "../model/user.js";
 import Wallet from "../model/wallet.js";
@@ -11,15 +10,7 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DOCX_PATH = path.resolve(__dirname, "../User Name 581.docx");
-
-const decodeXmlEntities = (value) =>
-  value
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+const BOTS_TXT_PATH = path.resolve(__dirname, "../bots.txt");
 
 const normalizeUsername = (rawValue) => {
   const trimmed = String(rawValue || "").trim();
@@ -30,28 +21,36 @@ const normalizeUsername = (rawValue) => {
   return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
 };
 
-const readUsernamesFromDocx = (docxPath) => {
-  if (!fs.existsSync(docxPath)) {
-    throw new Error(`DOCX file not found: ${docxPath}`);
+const sanitizeBotName = (rawName) => {
+  const normalized = String(rawName || "").normalize("NFKD");
+  const cleaned = normalized
+    // Keep letters, numbers, spaces, @, underscore, dash and dot only.
+    .replace(/[^\p{L}\p{N}@._ -]+/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    // Handle lines that accidentally include an extra index prefix in content.
+    .replace(/^\d+\s+/, "")
+    .trim();
+
+  return cleaned;
+};
+
+const readUsernamesFromTxt = (txtPath) => {
+  if (!fs.existsSync(txtPath)) {
+    throw new Error(`bots.txt file not found: ${txtPath}`);
   }
 
-  const zip = new AdmZip(docxPath);
-  const documentEntry = zip.getEntry("word/document.xml");
-
-  if (!documentEntry) {
-    throw new Error("Invalid DOCX: word/document.xml not found");
-  }
-
-  const xml = zip.readAsText(documentEntry, "utf8");
-  const textMatches = [...xml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)];
-
-  const usernames = textMatches
-    .map((match) => decodeXmlEntities(match[1] || ""))
+  const content = fs.readFileSync(txtPath, "utf8");
+  const usernames = content
+    .split(/\r?\n/)
+    // Strip line numbering like `12. Name` or `12) Name`.
+    .map((line) => line.replace(/^\s*\d+\s*[.)-]?\s*/, ""))
+    .map(sanitizeBotName)
     .map(normalizeUsername)
     .filter(Boolean);
 
   if (usernames.length === 0) {
-    throw new Error("No non-empty usernames found in DOCX");
+    throw new Error("No non-empty usernames found in bots.txt");
   }
 
   return usernames;
@@ -87,130 +86,149 @@ function generateBotPhoneNumber(index) {
  * Main seed function
  */
 const seedBots = async (limit = null) => {
-  try {
-    await connectDB();
-    console.log("🤖 Starting bot user seeding...\n");
+  await connectDB();
+  console.log("🤖 Starting bot user seeding...\n");
 
-    const allUsernames = readUsernamesFromDocx(DOCX_PATH);
-    const usernamesToSeedRaw =
-      Number.isInteger(limit) && limit > 0
-        ? allUsernames.slice(0, limit)
-        : allUsernames;
-    const usernamesToSeed = makeUsernamesUnique(usernamesToSeedRaw);
-    const duplicateCount = usernamesToSeedRaw.length - new Set(usernamesToSeedRaw).size;
+  const allUsernames = readUsernamesFromTxt(BOTS_TXT_PATH);
+  const usernamesToSeedRaw =
+    Number.isInteger(limit) && limit > 0
+      ? allUsernames.slice(0, limit)
+      : allUsernames;
+  const usernamesToSeed = makeUsernamesUnique(usernamesToSeedRaw);
+  const duplicateCount = usernamesToSeedRaw.length - new Set(usernamesToSeedRaw).size;
 
-    console.log(`📄 Parsed usernames from DOCX: ${allUsernames.length}`);
-    console.log(`📝 Usernames to seed: ${usernamesToSeed.length}`);
-    if (duplicateCount > 0) {
-      console.log(
-        `♻️ Duplicate usernames detected: ${duplicateCount} (auto-suffixed for uniqueness)`,
-      );
-    }
+  console.log(`📄 Parsed usernames from bots.txt: ${allUsernames.length}`);
+  console.log(`📝 Usernames to seed: ${usernamesToSeed.length}`);
+  if (duplicateCount > 0) {
+    console.log(
+      `♻️ Duplicate usernames detected: ${duplicateCount} (auto-suffixed for uniqueness)`
+    );
+  }
 
-    if (usernamesToSeed.length === 0) {
-      console.log("⚠️ No usernames to seed. Exiting.");
-      return;
-    }
+  if (usernamesToSeed.length === 0) {
+    console.log("⚠️ No usernames to seed. Exiting.");
+    return {
+      createdBots: 0,
+      createdWallets: 0,
+    };
+  }
 
-    // Full reset: remove existing bots and their wallets
-    const existingBots = await User.find({ is_bot: true }).select("_id wallet");
-    const botUserIds = existingBots.map((bot) => bot._id);
-    const walletIdsFromUsers = existingBots
-      .map((bot) => bot.wallet)
-      .filter(Boolean);
+  // Full reset: remove existing bots and their wallets
+  const existingBots = await User.find({ is_bot: true }).select("_id wallet");
+  const botUserIds = existingBots.map((bot) => bot._id);
+  const walletIdsFromUsers = existingBots
+    .map((bot) => bot.wallet)
+    .filter(Boolean);
 
-    let deletedWalletCount = 0;
-    if (botUserIds.length > 0 || walletIdsFromUsers.length > 0) {
-      const walletFilter =
-        botUserIds.length > 0 && walletIdsFromUsers.length > 0
-          ? {
-              $or: [{ user: { $in: botUserIds } }, { _id: { $in: walletIdsFromUsers } }],
-            }
-          : botUserIds.length > 0
-            ? { user: { $in: botUserIds } }
-            : { _id: { $in: walletIdsFromUsers } };
+  let deletedWalletCount = 0;
+  if (botUserIds.length > 0 || walletIdsFromUsers.length > 0) {
+    const walletFilter =
+      botUserIds.length > 0 && walletIdsFromUsers.length > 0
+        ? {
+            $or: [{ user: { $in: botUserIds } }, { _id: { $in: walletIdsFromUsers } }],
+          }
+        : botUserIds.length > 0
+          ? { user: { $in: botUserIds } }
+          : { _id: { $in: walletIdsFromUsers } };
 
-      const walletDeleteResult = await Wallet.deleteMany(walletFilter);
-      deletedWalletCount = walletDeleteResult.deletedCount || 0;
-    }
+    const walletDeleteResult = await Wallet.deleteMany(walletFilter);
+    deletedWalletCount = walletDeleteResult.deletedCount || 0;
+  }
 
-    const botDeleteResult = await User.deleteMany({ is_bot: true });
-    const deletedBotCount = botDeleteResult.deletedCount || 0;
+  const botDeleteResult = await User.deleteMany({ is_bot: true });
+  const deletedBotCount = botDeleteResult.deletedCount || 0;
 
-    console.log(`🗑️ Deleted bot users: ${deletedBotCount}`);
-    console.log(`🗑️ Deleted bot wallets: ${deletedWalletCount}\n`);
+  console.log(`🗑️ Deleted bot users: ${deletedBotCount}`);
+  console.log(`🗑️ Deleted bot wallets: ${deletedWalletCount}\n`);
 
-    const createdBots = [];
-    const createdWallets = [];
-    const totalToCreate = usernamesToSeed.length;
+  const createdBots = [];
+  const createdWallets = [];
+  const totalToCreate = usernamesToSeed.length;
 
-    for (let i = 0; i < totalToCreate; i++) {
-      const name = usernamesToSeed[i];
-      const phoneNumber = generateBotPhoneNumber(i);
-      const difficulty = Math.floor(Math.random() * 10) + 1; // 1-10
+  for (let i = 0; i < totalToCreate; i++) {
+    const name = usernamesToSeed[i];
+    const phoneNumber = generateBotPhoneNumber(i);
+    const difficulty = Math.floor(Math.random() * 10) + 1; // 1-10
 
-      const botUser = new User({
-        name,
-        phoneNumber,
-        is_bot: true,
-        bot_difficulty: difficulty,
-        isVerified: true,
-        isActive: true,
-        balance: 0,
-        points: Math.floor(Math.random() * 500), // Random starting points
-        current_streak: 0,
-        role: "user",
-      });
-
-      await botUser.save();
-      createdBots.push(botUser);
-
-      // Create wallet for bot (with some initial balance for testing)
-      const wallet = new Wallet({
-        user: botUser._id,
-        balance: 10000000000,
-        bonus: 0,
-      });
-      await wallet.save();
-      createdWallets.push(wallet);
-
-      // Update user's wallet reference
-      botUser.wallet = wallet._id;
-      await botUser.save();
-
-      // Progress indicator
-      if ((i + 1) % 25 === 0 || i === totalToCreate - 1) {
-        console.log(`  ✓ Created ${i + 1}/${totalToCreate} bot users`);
-      }
-    }
-
-    console.log("\n🎉 Bot seeding completed!");
-    console.log(`   - Total bots created: ${createdBots.length}`);
-    console.log(`   - Total wallets created: ${createdWallets.length}`);
-    console.log(`   - Total bot users now: ${createdBots.length}`);
-
-    // Display sample of created bots
-    console.log("\n📋 Sample of created bots:");
-    createdBots.slice(0, 5).forEach((bot, idx) => {
-      console.log(
-        `   ${idx + 1}. ${bot.name} (${bot.phoneNumber}) - Difficulty: ${
-          bot.bot_difficulty
-        }`
-      );
+    const botUser = new User({
+      name,
+      phoneNumber,
+      is_bot: true,
+      bot_difficulty: difficulty,
+      isVerified: true,
+      isActive: true,
+      balance: 0,
+      points: Math.floor(Math.random() * 500), // Random starting points
+      current_streak: 0,
+      role: "user",
     });
+
+    await botUser.save();
+    createdBots.push(botUser);
+
+    // Create wallet for bot (with some initial balance for testing)
+    const wallet = new Wallet({
+      user: botUser._id,
+      balance: 10000000000,
+      bonus: 0,
+    });
+    await wallet.save();
+    createdWallets.push(wallet);
+
+    // Update user's wallet reference
+    botUser.wallet = wallet._id;
+    await botUser.save();
+
+    // Progress indicator
+    if ((i + 1) % 25 === 0 || i === totalToCreate - 1) {
+      console.log(`  ✓ Created ${i + 1}/${totalToCreate} bot users`);
+    }
+  }
+
+  console.log("\n🎉 Bot seeding completed!");
+  console.log(`   - Total bots created: ${createdBots.length}`);
+  console.log(`   - Total wallets created: ${createdWallets.length}`);
+  console.log(`   - Total bot users now: ${createdBots.length}`);
+
+  // Display sample of created bots
+  console.log("\n📋 Sample of created bots:");
+  createdBots.slice(0, 5).forEach((bot, idx) => {
+    console.log(
+      `   ${idx + 1}. ${bot.name} (${bot.phoneNumber}) - Difficulty: ${
+        bot.bot_difficulty
+      }`
+    );
+  });
+
+  return {
+    createdBots: createdBots.length,
+    createdWallets: createdWallets.length,
+    totalInputUsernames: allUsernames.length,
+    seededUsernames: usernamesToSeed.length,
+    deletedBotCount,
+    deletedWalletCount,
+  };
+};
+
+export { seedBots };
+
+const runFromCli = async () => {
+  try {
+    // Optional CLI argument: limit number of usernames to seed
+    const parsedLimit = Number.parseInt(process.argv[2], 10);
+    const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : null;
+    await seedBots(limit);
   } catch (error) {
     console.error("❌ Error seeding bot users:", error);
     if (error.code === 11000) {
-      console.error(
-        "   Duplicate key error - some phone numbers may already exist"
-      );
+      console.error("   Duplicate key error - some phone numbers may already exist");
     }
+    process.exitCode = 1;
   } finally {
-    process.exit(0);
+    process.exit();
   }
 };
 
-// Optional CLI argument: limit number of usernames to seed
-const parsedLimit = Number.parseInt(process.argv[2], 10);
-const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : null;
-seedBots(limit);
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  runFromCli();
+}
