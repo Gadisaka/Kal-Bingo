@@ -76,7 +76,10 @@ const getMainMenuKeyboard = (frontendUrl) => ({
     [{ text: "🎮 Play Bingo", web_app: { url: frontendUrl } }],
     [
       { text: "💰 Deposit", web_app: { url: `${frontendUrl}?action=deposit` } },
-      { text: "💸 Withdraw", web_app: { url: `${frontendUrl}?action=withdraw` } },
+      {
+        text: "💸 Withdraw",
+        web_app: { url: `${frontendUrl}?action=withdraw` },
+      },
     ],
     [{ text: "👥 Join Community", url: "https://t.me/kalbingo5" }],
   ],
@@ -387,11 +390,9 @@ export const handleStartCommand = async (message) => {
       const frontendUrl = process.env.FRONTEND_URL || "https://sheqaygames.com";
       const keyboard = getMainMenuKeyboard(frontendUrl);
 
-      await sendBotMessage(
-        chatId,
-        getMainMenuText(),
-        { reply_markup: keyboard },
-      );
+      await sendBotMessage(chatId, getMainMenuText(), {
+        reply_markup: keyboard,
+      });
       return;
     }
 
@@ -570,7 +571,7 @@ export const handleStartCommand = async (message) => {
 
       await sendBotMessage(
         chatId,
-        `👋 Welcome to <b>Sheqela Games</b>!\n\nTo complete your registration, please share your phone number by clicking the button below.`,
+        `👋 Welcome to <b>Kal Bingo</b>!\n\nTo complete your registration, please share your phone number by clicking the button below.`,
         { reply_markup: contactKeyboard },
       );
       return;
@@ -602,7 +603,7 @@ export const handleStartCommand = async (message) => {
       ],
     };
 
-    const authMessage = `🔐 <b>Authorization Request</b>\n\nSomeone is trying to log in to <b>Sheqela Games</b> using your Telegram account.${userInfo}\n\nDo you want to authorize this login?`;
+    const authMessage = `🔐 <b>Authorization Request</b>\n\nSomeone is trying to log in to <b>Kal Bingo</b> using your Telegram account.${userInfo}\n\nDo you want to authorize this login?`;
 
     console.log(`📨 Sending authorization message to user ${telegramId}`);
     await sendBotMessage(chatId, authMessage, { reply_markup: keyboard });
@@ -830,10 +831,7 @@ const handleInstructionsCommand = async (message) => {
  */
 const handleContactCommand = async (message) => {
   const chatId = message.chat.id;
-  await sendBotMessage(
-    chatId,
-    "👉 @Kalbingosupport1\n\n👉 @kalbingosupport2",
-  );
+  await sendBotMessage(chatId, "👉 @Kalbingosupport1\n\n👉 @kalbingosupport2");
 };
 
 /**
@@ -930,7 +928,10 @@ const createTelegramWithdrawalRequest = async ({
     } catch {
       // ignore
     }
-    return { success: false, error: error.message || "Failed to create withdrawal" };
+    return {
+      success: false,
+      error: error.message || "Failed to create withdrawal",
+    };
   } finally {
     session.endSession();
   }
@@ -948,7 +949,7 @@ const createTelegramDeposit = async ({
   chatId,
 }) => {
   const providersToTry = Array.from(
-    new Set([provider, ...(fallbackProviders || [])].filter(Boolean))
+    new Set([provider, ...(fallbackProviders || [])].filter(Boolean)),
   );
 
   let verificationResult = null;
@@ -993,7 +994,9 @@ const createTelegramDeposit = async ({
     };
   }
 
-  const depositAmount = Math.trunc(Number(verificationResult.data?.amount || 0));
+  const depositAmount = Math.trunc(
+    Number(verificationResult.data?.amount || 0),
+  );
   if (!Number.isFinite(depositAmount) || depositAmount <= 0) {
     return {
       success: false,
@@ -1186,18 +1189,19 @@ const handleWithdrawFlowText = async (message, text) => {
       ]),
     };
 
-    await sendBotMessage(
-      chatId,
-      "Select withdrawal method:",
-      { reply_markup: keyboard },
-    );
+    await sendBotMessage(chatId, "Select withdrawal method:", {
+      reply_markup: keyboard,
+    });
     return true;
   }
 
   if (flow.step === "awaiting_account_identifier") {
     const accountIdentifier = text.trim();
     if (!accountIdentifier) {
-      await sendBotMessage(chatId, "Please enter a valid account/phone number.");
+      await sendBotMessage(
+        chatId,
+        "Please enter a valid account/phone number.",
+      );
       return true;
     }
     withdrawFlowByTelegramId.set(telegramId, {
@@ -1255,7 +1259,10 @@ const handleDepositFlowText = async (message, text) => {
   }
 
   if (flow.step === "awaiting_bank_method") {
-    await sendBotMessage(chatId, "Please choose a deposit method from the buttons.");
+    await sendBotMessage(
+      chatId,
+      "Please choose a deposit method from the buttons.",
+    );
     return true;
   }
 
@@ -1633,7 +1640,10 @@ export const processBotUpdate = async (update) => {
         }
         if (withdrawFlowByTelegramId.has(telegramId)) {
           withdrawFlowByTelegramId.delete(telegramId);
-          await sendBotMessage(update.message.chat.id, "❌ Withdrawal cancelled.");
+          await sendBotMessage(
+            update.message.chat.id,
+            "❌ Withdrawal cancelled.",
+          );
           return;
         }
       }
