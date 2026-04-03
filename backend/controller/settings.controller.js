@@ -143,13 +143,14 @@ export const getSystemGameSettings = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
-        maxPlayers: settings.systemGames?.maxPlayers || 100,
-        minStake: settings.systemGames?.minStake || 10,
-        maxStake: settings.systemGames?.maxStake || 1000,
-        callInterval: settings.systemGames?.callInterval || 5,
-        winCut: settings.systemGames?.winCut || 10,
-        gameStakes: settings.systemGames?.gameStakes || [10, 20, 50, 100],
-        waitingRoomDuration: settings.systemGames?.waitingRoomDuration || 60,
+        maxPlayers: settings.systemGames?.maxPlayers ?? 100,
+        minStake: settings.systemGames?.minStake ?? 10,
+        maxStake: settings.systemGames?.maxStake ?? 1000,
+        callInterval: settings.systemGames?.callInterval ?? 5,
+        // IMPORTANT: winCut can legitimately be 0, so don't use `||` here.
+        winCut: settings.systemGames?.winCut ?? 10,
+        gameStakes: settings.systemGames?.gameStakes ?? [10, 20, 50, 100],
+        waitingRoomDuration: settings.systemGames?.waitingRoomDuration ?? 60,
       },
     });
   } catch (error) {

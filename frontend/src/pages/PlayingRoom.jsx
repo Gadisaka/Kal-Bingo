@@ -835,7 +835,9 @@ export default function PlayingRoom() {
   const navPrize = navigationState?.prize;
   const navWinCutPercent = navigationState?.winCutPercent ?? 10;
   const effectiveWinCutPercent =
-    typeof systemWinCutPercent === "number" ? systemWinCutPercent : navWinCutPercent;
+    typeof systemWinCutPercent === "number"
+      ? systemWinCutPercent
+      : navWinCutPercent;
 
   const _calculatePrizeWithWinCut = useCallback(
     (rawPrize) => {

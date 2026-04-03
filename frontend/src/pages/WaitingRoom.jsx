@@ -439,9 +439,9 @@ export default function WaitingRoom() {
   useEffect(() => {
     const fetchSystemSettings = async () => {
       try {
-        const res = await fetch("/api/settings/system-games");
+        const res = await fetch(`${API_URL}/api/settings/system-games`);
         const data = await res.json();
-        const wc = Number(data?.data?.winCut);
+        const wc = Number(data?.data?.winCut ?? data?.winCut);
         if (!Number.isNaN(wc) && wc >= 0) {
           setWinCutPercent(wc);
         }
