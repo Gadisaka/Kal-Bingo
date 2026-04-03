@@ -230,6 +230,10 @@ export default function WaitingRoom() {
         const currentRoom = roomRef.current;
         const currentWinCut = winCutPercentRef.current;
         const totalCartelas = Object.keys(currentTakenCartelas).length;
+        const uniqueCartelaUsers = new Set(
+          Object.values(currentTakenCartelas).map((c) => c?.userId),
+        );
+        const playerCount = uniqueCartelaUsers.size;
         const gameStake = currentRoom?.betAmount ?? 0;
         const gamePrize = Math.max(
           0,
@@ -248,7 +252,7 @@ export default function WaitingRoom() {
             isSpectator,
             roomType: "system",
             stake: gameStake,
-            playerCount: currentRoom?.joinedPlayers?.length ?? 0,
+            playerCount,
             cartelasCount: totalCartelas,
             prize: gamePrize,
             winCutPercent: currentWinCut,
@@ -553,6 +557,10 @@ export default function WaitingRoom() {
       const currentTakenCartelas = takenCartelasRef.current || {};
       const currentWinCut = winCutPercentRef.current;
       const totalCartelas = Object.keys(currentTakenCartelas).length;
+      const uniqueCartelaUsers = new Set(
+        Object.values(currentTakenCartelas).map((c) => c?.userId),
+      );
+      const playerCount = uniqueCartelaUsers.size;
       const gameStake = room?.betAmount ?? 0;
       const gamePrize = Math.max(
         0,
@@ -567,7 +575,7 @@ export default function WaitingRoom() {
           isSpectator: !hasSelectedCartela,
           roomType: "system",
           stake: gameStake,
-          playerCount: room?.joinedPlayers?.length ?? 0,
+          playerCount,
           cartelasCount: totalCartelas,
           prize: gamePrize,
           winCutPercent: currentWinCut,

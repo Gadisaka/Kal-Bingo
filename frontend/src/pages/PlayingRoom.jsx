@@ -853,7 +853,26 @@ export default function PlayingRoom() {
     // In spectator mode, avoid showing fallback values until a live playing room is confirmed.
     if (!spectatorRoomReady) return 0;
 
-    // Primary: actual room data from socket/API
+    // Primary: count from cartela ownership (unique users with at least one cartela).
+    // This intentionally excludes spectators who joined the room but didn't select a cartela.
+    if (Object.keys(allRoomCartelas).length > 0) {
+      const uniqueUsers = new Set(
+        Object.values(allRoomCartelas).map((c) => c?.userId),
+      );
+      return uniqueUsers.size;
+    }
+
+    // Secondary: count from room.selectedCartelas if available
+    const cartelasObj =
+      room?.raw?.selectedCartelas || room?.selectedCartelas || {};
+    if (cartelasObj && Object.keys(cartelasObj).length > 0) {
+      const uniqueUsers = new Set(
+        Object.values(cartelasObj).map((c) => c?.userId),
+      );
+      return uniqueUsers.size;
+    }
+
+    // Tertiary: actual room data from socket/API (may include spectators)
     if (
       room?.joinedPlayers &&
       Array.isArray(room.joinedPlayers) &&
@@ -861,13 +880,7 @@ export default function PlayingRoom() {
     ) {
       return room.joinedPlayers.length;
     }
-    // Secondary: count from allRoomCartelas (unique users)
-    if (Object.keys(allRoomCartelas).length > 0) {
-      const uniqueUsers = new Set(
-        Object.values(allRoomCartelas).map((c) => c?.userId),
-      );
-      return uniqueUsers.size;
-    }
+
     // Fallback: navigation state (only for initial load before room data arrives)
     if (navPlayerCount && navPlayerCount > 0) {
       return navPlayerCount;

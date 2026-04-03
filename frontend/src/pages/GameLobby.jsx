@@ -215,13 +215,17 @@ export default function GameLobby() {
       setJoinLoading(null);
       setIsAutoJoinRouting(false);
       const cartelasCount = Object.keys(room.selectedCartelas || {}).length;
+      const uniqueCartelaUsers = new Set(
+        Object.values(room.selectedCartelas || {}).map((c) => c?.userId),
+      );
+      const playerCount = uniqueCartelaUsers.size;
       const stake = room.betAmount || 0;
       navigate(`/playing/${room.id}`, {
         state: {
           isSpectator: true,
           roomType: "system",
           stake,
-          playerCount: room.joinedPlayers?.length ?? 0,
+          playerCount,
           calledNumbers,
           cartelasCount,
           prize: stake * cartelasCount,
@@ -239,13 +243,17 @@ export default function GameLobby() {
       setJoinLoading(null);
       setIsAutoJoinRouting(false);
       const cartelasCount = Object.keys(room.selectedCartelas || {}).length;
+      const uniqueCartelaUsers = new Set(
+        Object.values(room.selectedCartelas || {}).map((c) => c?.userId),
+      );
+      const playerCount = uniqueCartelaUsers.size;
       const stake = room.betAmount || 0;
       navigate(`/playing/${room.id}`, {
         state: {
           isSpectator: false,
           roomType: "system",
           stake,
-          playerCount: room.joinedPlayers?.length ?? 0,
+          playerCount,
           calledNumbers,
           cartelasCount,
           prize: stake * cartelasCount,
@@ -274,13 +282,17 @@ export default function GameLobby() {
       setJoinLoading(null);
       setIsAutoJoinRouting(false);
       const cartelasCount = Object.keys(room.selectedCartelas || {}).length;
+      const uniqueCartelaUsers = new Set(
+        Object.values(room.selectedCartelas || {}).map((c) => c?.userId),
+      );
+      const playerCount = uniqueCartelaUsers.size;
       const stake = room.betAmount || 0;
       navigate(`/playing/${room.id}`, {
         state: {
           isSpectator: true,
           roomType: "system",
           stake,
-          playerCount: room.joinedPlayers?.length ?? 0,
+          playerCount,
           calledNumbers,
           cartelasCount,
           prize: stake * cartelasCount,
