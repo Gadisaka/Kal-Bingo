@@ -104,7 +104,8 @@ function extractApiMessage(payload) {
   );
 }
 
-/** Keys the upstream verify API may use for the credited account (receiver) name. */
+/** Keys the upstream verify API may use for the credited account (receiver) name.
+ *  More specific keys first; generic `accountName` / `merchantName` last to avoid wrong picks. */
 const RECEIVER_NAME_KEYS = [
   "receiverName",
   "recipientName",
@@ -113,8 +114,10 @@ const RECEIVER_NAME_KEYS = [
   "payeeName",
   "receiverFullName",
   "creditAccountName",
-  "accountName",
+  "creditedName",
+  "creditToName",
   "merchantName",
+  "accountName",
 ];
 
 /** Keys the upstream verify API may use for the credited account phone. */
@@ -144,19 +147,21 @@ function pickFirstNonEmptyString(obj, keys) {
  * Collect receiver name/phone from a verify response (shape varies by provider/API version).
  */
 function extractVerifiedReceiverInfo(nestedData, responseData) {
+  // Prefer nested payee-specific objects before the root payload — root `accountName`
+  // is often a generic label and must not override `receiverName` / transaction fields.
   const buckets = [
-    nestedData,
-    responseData,
-    nestedData?.transaction,
-    responseData?.transaction,
-    nestedData?.data,
-    responseData?.data,
     nestedData?.receiver,
     responseData?.receiver,
     nestedData?.recipient,
     responseData?.recipient,
+    nestedData?.transaction,
+    responseData?.transaction,
     nestedData?.details,
     responseData?.details,
+    nestedData?.data,
+    responseData?.data,
+    nestedData,
+    responseData,
   ].filter((x) => x && typeof x === "object");
 
   let name = "";
@@ -186,23 +191,68 @@ function extractVerifiedReceiverInfo(nestedData, responseData) {
   return { name, phone };
 }
 
-function firstNameToken(name) {
-  return String(name || "")
-    .trim()
-    .split(/\s+/)[0]
-    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+const NAME_TITLE_TOKENS = new Set([
+  "mr",
+  "mrs",
+  "ms",
+  "miss",
+  "dr",
+  "prof",
+  "sir",
+  "madam",
+  "sr",
+  "jr",
+]);
+
+/**
+ * Split a display name into comparable tokens (order-independent), Unicode-safe.
+ */
+function normalizeNameTokens(name) {
+  const raw = String(name || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\u2018\u2019'`´]/g, "")
+    .replace(/[^0-9\p{L}]+/gu, " ")
+    .trim();
+  if (!raw) return [];
+  return raw
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0 && !NAME_TITLE_TOKENS.has(t));
 }
 
 /**
- * Compare configured account full name to verified name using the first name (first word).
+ * True when settings `accountName` and API receiver name refer to the same person/account.
+ * Handles different word order, extra titles, spacing/punctuation, and minor spelling prefixes.
  */
-function firstNameMatches(expectedFullName, verifiedName) {
-  const a = firstNameToken(expectedFullName);
-  const b = firstNameToken(verifiedName);
-  if (!a || !b) return false;
-  const al = a.toLowerCase();
-  const bl = b.toLowerCase();
-  return al === bl || bl.startsWith(al) || al.startsWith(bl);
+function receiverDepositNamesMatch(expectedFullName, verifiedName) {
+  const expTokens = normalizeNameTokens(expectedFullName);
+  const verTokens = normalizeNameTokens(verifiedName);
+  if (expTokens.length === 0 || verTokens.length === 0) return false;
+
+  const expCollapsed = expTokens.join(" ");
+  const verCollapsed = verTokens.join(" ");
+  if (expCollapsed === verCollapsed) return true;
+
+  const stripSpaces = (s) => s.replace(/\s+/g, "");
+  if (stripSpaces(expCollapsed) === stripSpaces(verCollapsed)) return true;
+
+  if (expCollapsed.includes(verCollapsed) || verCollapsed.includes(expCollapsed)) return true;
+
+  const verSet = new Set(verTokens);
+  for (const t of expTokens) {
+    if (verSet.has(t)) return true;
+  }
+
+  for (const t of expTokens) {
+    if (t.length < 2) continue;
+    for (const v of verTokens) {
+      if (v.length < 2) continue;
+      if (v.startsWith(t) || t.startsWith(v)) return true;
+    }
+  }
+
+  return false;
 }
 
 /** Normalize to Ethiopia local 9 digits when possible (251…, 09…, or 9…). */
@@ -258,7 +308,7 @@ function validateReceiverAgainstPayload(payload, nestedData, responseData) {
           "Could not confirm the receiver name for this transaction. Please contact support or try again with the full SMS.",
       };
     }
-    if (!firstNameMatches(expectedName, verifiedName)) {
+    if (!receiverDepositNamesMatch(expectedName, verifiedName)) {
       return {
         ok: false,
         message: "This payment was not sent to the correct receiver account (name mismatch).",
