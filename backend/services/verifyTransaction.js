@@ -143,6 +143,16 @@ function pickFirstNonEmptyString(obj, keys) {
   return "";
 }
 
+function pickFirstPhoneLike(obj, keys) {
+  if (!obj || typeof obj !== "object") return "";
+  for (const key of keys) {
+    const v = obj[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
+  return "";
+}
+
 /**
  * Collect receiver name/phone from a verify response (shape varies by provider/API version).
  */
@@ -168,7 +178,7 @@ function extractVerifiedReceiverInfo(nestedData, responseData) {
   let phone = "";
   for (const obj of buckets) {
     if (!name) name = pickFirstNonEmptyString(obj, RECEIVER_NAME_KEYS);
-    if (!phone) phone = pickFirstNonEmptyString(obj, RECEIVER_PHONE_KEYS);
+    if (!phone) phone = pickFirstPhoneLike(obj, RECEIVER_PHONE_KEYS);
     if (name && phone) break;
   }
 
@@ -183,7 +193,7 @@ function extractVerifiedReceiverInfo(nestedData, responseData) {
     }
     if (!phone) {
       phone =
-        pickFirstNonEmptyString(nestedRx, RECEIVER_PHONE_KEYS) ||
+        pickFirstPhoneLike(nestedRx, RECEIVER_PHONE_KEYS) ||
         (typeof nestedRx.phone === "string" ? nestedRx.phone.trim() : "");
     }
   }
@@ -282,10 +292,74 @@ function receiverPhonesMatch(expectedPhone, verifiedPhone) {
 }
 
 /**
+ * Telebirr SMS: "… transferred ETB 10.00 to Amanuel Legesse (2519****8899)"
+ * CBE SMS: "… sent 10.00Br. to AMANUEL LEGESSE on 03/04/26 …"
+ * (PH= in CBE URLs is often the payer’s line, not the merchant — do not use it as payee phone.)
+ */
+function extractPayeeHintsFromSms(provider, rawInput) {
+  const text = String(rawInput || "");
+  if (!text.trim()) return { name: "", phone: "" };
+
+  if (provider === "cbebirr") {
+    // e.g. "… to AMANUEL LEGESSE on 03/04/26 15:03 …"
+    const toOn = text.match(/\bto\s+(.+?)\s+on\s+\d{1,2}\/\d{1,2}/i);
+    if (toOn?.[1]) {
+      return { name: toOn[1].trim().replace(/\s+/g, " "), phone: "" };
+    }
+    return { name: "", phone: "" };
+  }
+
+  if (provider === "telebirr") {
+    const m = text.match(/\bto\s+([^(]+?)\s*\(\s*(251[\d*]+)\s*\)/i);
+    if (m?.[1] && m?.[2]) {
+      return {
+        name: m[1].trim().replace(/\s+/g, " "),
+        phone: m[2].replace(/\s/g, ""),
+      };
+    }
+    const nameOnly = text.match(/\bto\s+([^(]+?)\s*\(/i);
+    if (nameOnly?.[1]) {
+      return { name: nameOnly[1].trim().replace(/\s+/g, " "), phone: "" };
+    }
+  }
+
+  return { name: "", phone: "" };
+}
+
+/** Telebirr-style mask e.g. 2519****8899 vs full 251900238899 */
+function maskedEthPhoneMatchesExpected(maskRaw, expectedPhone) {
+  const mask = String(maskRaw || "").replace(/[^\d*]/g, "");
+  if (!mask.includes("*")) return false;
+  const e = normalizeEtLocalNineDigits(expectedPhone);
+  if (e.length !== 9) return false;
+  const full = `251${e}`;
+  const firstStar = mask.indexOf("*");
+  const lastStar = mask.lastIndexOf("*");
+  if (firstStar === -1) return false;
+  const prefix = mask.slice(0, firstStar);
+  const suffix = mask.slice(lastStar + 1);
+  if (prefix && !full.startsWith(prefix)) return false;
+  if (suffix && !full.endsWith(suffix)) return false;
+  if (prefix.length + suffix.length > full.length) return false;
+  return true;
+}
+
+/**
  * When the caller provides expected receiver details, ensure the verified transaction matches.
  * @returns {{ ok: boolean, message?: string }}
  */
-function validateReceiverAgainstPayload(payload, nestedData, responseData) {
+function validateReceiverAgainstPayload(
+  payload,
+  nestedData,
+  responseData,
+  options = {}
+) {
+  const {
+    provider = "",
+    referenceId = "",
+    cbePhoneUsedForVerify = "",
+  } = options;
+
   const expectedName = String(payload.receiverName || "").trim();
   const expectedPhone = String(
     payload.receiverAccountNumber || payload.telebirrPhoneNumber || ""
@@ -295,10 +369,12 @@ function validateReceiverAgainstPayload(payload, nestedData, responseData) {
     return { ok: true };
   }
 
-  const { name: verifiedName, phone: verifiedPhone } = extractVerifiedReceiverInfo(
-    nestedData,
-    responseData
-  );
+  const api = extractVerifiedReceiverInfo(nestedData, responseData);
+  const sms = extractPayeeHintsFromSms(provider, referenceId);
+
+  const verifiedName = (api.name || sms.name || "").trim();
+  const apiPhone = (api.phone || "").trim();
+  const smsPhone = (sms.phone || "").trim();
 
   if (expectedName) {
     if (!verifiedName) {
@@ -317,18 +393,52 @@ function validateReceiverAgainstPayload(payload, nestedData, responseData) {
   }
 
   if (expectedPhone) {
-    if (!verifiedPhone) {
-      return {
-        ok: false,
-        message:
-          "Could not confirm the receiver phone number for this transaction. Please contact support or try again with the full SMS.",
-      };
+    let phoneOk = false;
+
+    if (
+      cbePhoneUsedForVerify &&
+      receiverPhonesMatch(expectedPhone, cbePhoneUsedForVerify)
+    ) {
+      phoneOk = true;
     }
-    if (!receiverPhonesMatch(expectedPhone, verifiedPhone)) {
+
+    if (!phoneOk && apiPhone) {
+      if (/\*/.test(apiPhone)) {
+        phoneOk = maskedEthPhoneMatchesExpected(apiPhone, expectedPhone);
+      } else {
+        phoneOk = receiverPhonesMatch(expectedPhone, apiPhone);
+      }
+    }
+
+    if (!phoneOk && smsPhone) {
+      if (/\*/.test(smsPhone)) {
+        phoneOk = maskedEthPhoneMatchesExpected(smsPhone, expectedPhone);
+      } else {
+        phoneOk = receiverPhonesMatch(expectedPhone, smsPhone);
+      }
+    }
+
+    if (
+      !phoneOk &&
+      provider === "cbebirr" &&
+      cbePhoneUsedForVerify &&
+      expectedName &&
+      sms.name &&
+      receiverDepositNamesMatch(expectedName, sms.name)
+    ) {
+      phoneOk = true;
+    }
+
+    if (!phoneOk) {
+      const hadAnyHint =
+        Boolean(apiPhone) ||
+        Boolean(smsPhone) ||
+        Boolean(cbePhoneUsedForVerify);
       return {
         ok: false,
-        message:
-          "This payment was not sent to the correct receiver account (phone number mismatch).",
+        message: hadAnyHint
+          ? "This payment was not sent to the correct receiver account (phone number mismatch)."
+          : "Could not confirm the receiver phone number for this transaction. Please contact support or try again with the full SMS.",
       };
     }
   }
@@ -362,6 +472,7 @@ async function verifyTransaction(provider, payload) {
     }
 
     let res;
+    let cbePhoneUsedForVerify = "";
     const transactionNumber = extractTransactionId(
       normalizedProvider,
       payload.referenceId
@@ -379,8 +490,9 @@ async function verifyTransaction(provider, payload) {
       const configuredPhone = String(
         payload.receiverAccountNumber || payload.telebirrPhoneNumber || ""
       ).replace(/\D/g, "");
+      // Try the configured deposit line first. SMS PH= is often the payer’s MSISDN, not the merchant.
       const candidatePhones = Array.from(
-        new Set([extractedPhone, configuredPhone].filter(Boolean))
+        new Set([configuredPhone, extractedPhone].filter(Boolean))
       );
 
       if (!candidatePhones.length) {
@@ -403,6 +515,7 @@ async function verifyTransaction(provider, payload) {
               },
             }
           );
+          cbePhoneUsedForVerify = String(phoneNumber);
           lastError = null;
           break;
         } catch (err) {
@@ -463,7 +576,12 @@ async function verifyTransaction(provider, payload) {
     const receiverCheck = validateReceiverAgainstPayload(
       payload,
       nestedData,
-      responseData
+      responseData,
+      {
+        provider: normalizedProvider,
+        referenceId: payload.referenceId,
+        cbePhoneUsedForVerify,
+      }
     );
     if (!receiverCheck.ok) {
       return {
