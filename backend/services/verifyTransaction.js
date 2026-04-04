@@ -1,7 +1,8 @@
 import axios from "axios";
 
 const API_KEY = process.env.VERIFY_API_KEY;
-const BASE_URL = process.env.VERIFY_API_BASE_URL || "https://verifyapi.leulzenebe.pro";
+const BASE_URL =
+  process.env.VERIFY_API_BASE_URL || "https://verifyapi.leulzenebe.pro";
 
 const PROVIDER_ALIASES = {
   telebirr: "telebirr",
@@ -30,7 +31,7 @@ function extractTransactionId(provider, rawInput) {
     const candidates = [];
 
     const phraseMatch = input.match(
-      /transaction\s+number\s+is\s*([A-Z0-9]{8,24})/i
+      /transaction\s+number\s+is\s*([A-Z0-9]{8,24})/i,
     );
     if (phraseMatch?.[1]) candidates.push(cleanToken(phraseMatch[1]));
 
@@ -64,24 +65,76 @@ function extractTransactionId(provider, rawInput) {
   return cleanToken(fallback?.[0] || "");
 }
 
+/**
+ * Upstream verify API expects 12 digits: 251 + 9-digit national number.
+ * Accepts +251…, 09…, 9…, 00251…, URL-encoded values, etc.
+ */
+function normalizeEthPhoneForVerifyApi(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+
+  let decoded = s;
+  try {
+    decoded = decodeURIComponent(s.replace(/\+/g, "%2B"));
+  } catch {
+    decoded = s;
+  }
+
+  let d = decoded.replace(/\D/g, "");
+  if (!d) return "";
+
+  if (d.startsWith("00")) d = d.slice(2);
+
+  if (d.startsWith("251")) {
+    if (d.length === 12) return d;
+    if (d.length > 12) return d.slice(0, 12);
+    return "";
+  }
+
+  if (d.startsWith("0") && d.length === 10) {
+    return `251${d.slice(1)}`;
+  }
+
+  if (d.length === 9) {
+    return `251${d}`;
+  }
+
+  return "";
+}
+
 function extractPhoneNumberFromSms(rawInput) {
   const input = String(rawInput || "");
   if (!input) return "";
 
-  const fromQueryParam = input.match(/[?&]PH=(251\d{9})/i);
-  if (fromQueryParam?.[1]) return fromQueryParam[1];
+  const fromQueryParam = input.match(/[?&]PH=([^&\s#"'<>]+)/i);
+  if (fromQueryParam?.[1]) {
+    const normalized = normalizeEthPhoneForVerifyApi(fromQueryParam[1].trim());
+    if (normalized) return normalized;
+  }
 
   const genericE164Et = input.match(/\b251\d{9}\b/);
-  if (genericE164Et?.[0]) return genericE164Et[0];
+  if (genericE164Et?.[0]) {
+    const n = normalizeEthPhoneForVerifyApi(genericE164Et[0]);
+    if (n) return n;
+  }
+
+  const local09 = input.match(/\b09\d{8}\b/);
+  if (local09?.[0]) {
+    const n = normalizeEthPhoneForVerifyApi(local09[0]);
+    if (n) return n;
+  }
 
   return "";
 }
 
 function parseAmount(rawAmount) {
   if (rawAmount === undefined || rawAmount === null) return null;
-  if (typeof rawAmount === "number" && Number.isFinite(rawAmount)) return rawAmount;
+  if (typeof rawAmount === "number" && Number.isFinite(rawAmount))
+    return rawAmount;
 
-  const matched = String(rawAmount).replace(/,/g, "").match(/(\d+(?:\.\d+)?)/);
+  const matched = String(rawAmount)
+    .replace(/,/g, "")
+    .match(/(\d+(?:\.\d+)?)/);
   if (!matched) return null;
 
   const num = Number(matched[1]);
@@ -247,7 +300,11 @@ function receiverDepositNamesMatch(expectedFullName, verifiedName) {
   const stripSpaces = (s) => s.replace(/\s+/g, "");
   if (stripSpaces(expCollapsed) === stripSpaces(verCollapsed)) return true;
 
-  if (expCollapsed.includes(verCollapsed) || verCollapsed.includes(expCollapsed)) return true;
+  if (
+    expCollapsed.includes(verCollapsed) ||
+    verCollapsed.includes(expCollapsed)
+  )
+    return true;
 
   const verSet = new Set(verTokens);
   for (const t of expTokens) {
@@ -352,7 +409,7 @@ function validateReceiverAgainstPayload(
   payload,
   nestedData,
   responseData,
-  options = {}
+  options = {},
 ) {
   const {
     provider = "",
@@ -362,7 +419,7 @@ function validateReceiverAgainstPayload(
 
   const expectedName = String(payload.receiverName || "").trim();
   const expectedPhone = String(
-    payload.receiverAccountNumber || payload.telebirrPhoneNumber || ""
+    payload.receiverAccountNumber || payload.telebirrPhoneNumber || "",
   ).trim();
 
   if (!expectedName && !expectedPhone) {
@@ -387,7 +444,8 @@ function validateReceiverAgainstPayload(
     if (!receiverDepositNamesMatch(expectedName, verifiedName)) {
       return {
         ok: false,
-        message: "This payment was not sent to the correct receiver account (name mismatch).",
+        message:
+          "This payment was not sent to the correct receiver account (name mismatch).",
       };
     }
   }
@@ -475,28 +533,32 @@ async function verifyTransaction(provider, payload) {
     let cbePhoneUsedForVerify = "";
     const transactionNumber = extractTransactionId(
       normalizedProvider,
-      payload.referenceId
+      payload.referenceId,
     );
     extractedReference = transactionNumber;
     if (!transactionNumber) {
       throw new Error("Could not extract transaction ID from the provided SMS");
     }
     console.log(
-      `[verifyTransaction] provider=${normalizedProvider} extractedTransactionId=${transactionNumber}`
+      `[verifyTransaction] provider=${normalizedProvider} extractedTransactionId=${transactionNumber}`,
     );
 
     if (normalizedProvider === "cbebirr") {
       const extractedPhone = extractPhoneNumberFromSms(payload.referenceId);
-      const configuredPhone = String(
-        payload.receiverAccountNumber || payload.telebirrPhoneNumber || ""
-      ).replace(/\D/g, "");
+      const configuredPhone = normalizeEthPhoneForVerifyApi(
+        String(
+          payload.receiverAccountNumber || payload.telebirrPhoneNumber || "",
+        ).trim(),
+      );
       // Try the configured deposit line first. SMS PH= is often the payer’s MSISDN, not the merchant.
       const candidatePhones = Array.from(
-        new Set([configuredPhone, extractedPhone].filter(Boolean))
+        new Set([configuredPhone, extractedPhone].filter(Boolean)),
       );
 
       if (!candidatePhones.length) {
-        throw new Error("Receiver phone number is required for CBE Birr verification");
+        throw new Error(
+          "Receiver phone number is required for CBE Birr verification",
+        );
       }
 
       let lastError;
@@ -513,7 +575,7 @@ async function verifyTransaction(provider, payload) {
                 "x-api-key": API_KEY,
                 "Content-Type": "application/json",
               },
-            }
+            },
           );
           cbePhoneUsedForVerify = String(phoneNumber);
           lastError = null;
@@ -537,14 +599,15 @@ async function verifyTransaction(provider, payload) {
             "x-api-key": API_KEY,
             "Content-Type": "application/json",
           },
-        }
+        },
       );
     }
 
     const responseData = res.data || {};
-    const nestedData = responseData.data && typeof responseData.data === "object"
-      ? responseData.data
-      : responseData;
+    const nestedData =
+      responseData.data && typeof responseData.data === "object"
+        ? responseData.data
+        : responseData;
 
     const normalizedAmount =
       parseAmount(nestedData.amount) ??
@@ -556,7 +619,8 @@ async function verifyTransaction(provider, payload) {
     const isSuccess =
       typeof responseData.success === "boolean"
         ? responseData.success
-        : String(nestedData.transactionStatus || "").toLowerCase() === "completed";
+        : String(nestedData.transactionStatus || "").toLowerCase() ===
+          "completed";
 
     if (!isSuccess) {
       const message =
@@ -581,12 +645,14 @@ async function verifyTransaction(provider, payload) {
         provider: normalizedProvider,
         referenceId: payload.referenceId,
         cbePhoneUsedForVerify,
-      }
+      },
     );
     if (!receiverCheck.ok) {
       return {
         success: false,
-        message: receiverCheck.message || "Receiver details do not match the configured deposit account",
+        message:
+          receiverCheck.message ||
+          "Receiver details do not match the configured deposit account",
         referenceId: transactionNumber,
         data: responseData,
         raw: responseData,
@@ -606,9 +672,10 @@ async function verifyTransaction(provider, payload) {
   } catch (err) {
     const apiErrorPayload = err.response?.data;
     const apiMessage = extractApiMessage(apiErrorPayload);
-    const detailedMessage = apiMessage || err.message || "Transaction verification failed";
+    const detailedMessage =
+      apiMessage || err.message || "Transaction verification failed";
     console.error(
-      `[verifyTransaction] failed provider=${normalizedProvider || "unknown"} ref=${extractedReference || "none"} status=${err.response?.status || "n/a"} message=${detailedMessage}`
+      `[verifyTransaction] failed provider=${normalizedProvider || "unknown"} ref=${extractedReference || "none"} status=${err.response?.status || "n/a"} message=${detailedMessage}`,
     );
 
     return {
