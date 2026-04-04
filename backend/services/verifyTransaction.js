@@ -1,5 +1,5 @@
 import axios from "axios";
-
+// ph
 const API_KEY = process.env.VERIFY_API_KEY;
 const BASE_URL =
   process.env.VERIFY_API_BASE_URL || "https://verifyapi.leulzenebe.pro";
@@ -65,64 +65,27 @@ function extractTransactionId(provider, rawInput) {
   return cleanToken(fallback?.[0] || "");
 }
 
-/**
- * Upstream verify API expects 12 digits: 251 + 9-digit national number.
- * Accepts +251…, 09…, 9…, 00251…, URL-encoded values, etc.
- */
-function normalizeEthPhoneForVerifyApi(raw) {
-  const s = String(raw ?? "").trim();
-  if (!s) return "";
-
-  let decoded = s;
-  try {
-    decoded = decodeURIComponent(s.replace(/\+/g, "%2B"));
-  } catch {
-    decoded = s;
-  }
-
-  let d = decoded.replace(/\D/g, "");
-  if (!d) return "";
-
-  if (d.startsWith("00")) d = d.slice(2);
-
-  if (d.startsWith("251")) {
-    if (d.length === 12) return d;
-    if (d.length > 12) return d.slice(0, 12);
-    return "";
-  }
-
-  if (d.startsWith("0") && d.length === 10) {
-    return `251${d.slice(1)}`;
-  }
-
-  if (d.length === 9) {
-    return `251${d}`;
-  }
-
-  return "";
-}
-
 function extractPhoneNumberFromSms(rawInput) {
   const input = String(rawInput || "");
   if (!input) return "";
 
-  const fromQueryParam = input.match(/[?&]PH=([^&\s#"'<>]+)/i);
+  // Match PH= with +251, 251, or 0-prefixed Ethiopian phone numbers
+  const fromQueryParam = input.match(/[?&]PH=(\+?251\d{9}|0\d{9})/i);
   if (fromQueryParam?.[1]) {
-    const normalized = normalizeEthPhoneForVerifyApi(fromQueryParam[1].trim());
-    if (normalized) return normalized;
+    const digits = fromQueryParam[1].replace(/\D/g, "");
+    // Normalize 0XXXXXXXXX → 251XXXXXXXXX
+    if (digits.length === 10 && digits.startsWith("0")) {
+      return "251" + digits.slice(1);
+    }
+    // Already 251XXXXXXXXX (with or without leading +)
+    if (digits.length === 12 && digits.startsWith("251")) {
+      return digits;
+    }
+    return digits;
   }
 
   const genericE164Et = input.match(/\b251\d{9}\b/);
-  if (genericE164Et?.[0]) {
-    const n = normalizeEthPhoneForVerifyApi(genericE164Et[0]);
-    if (n) return n;
-  }
-
-  const local09 = input.match(/\b09\d{8}\b/);
-  if (local09?.[0]) {
-    const n = normalizeEthPhoneForVerifyApi(local09[0]);
-    if (n) return n;
-  }
+  if (genericE164Et?.[0]) return genericE164Et[0];
 
   return "";
 }
@@ -545,11 +508,9 @@ async function verifyTransaction(provider, payload) {
 
     if (normalizedProvider === "cbebirr") {
       const extractedPhone = extractPhoneNumberFromSms(payload.referenceId);
-      const configuredPhone = normalizeEthPhoneForVerifyApi(
-        String(
-          payload.receiverAccountNumber || payload.telebirrPhoneNumber || "",
-        ).trim(),
-      );
+      const configuredPhone = String(
+        payload.receiverAccountNumber || payload.telebirrPhoneNumber || "",
+      ).replace(/\D/g, "");
       // Try the configured deposit line first. SMS PH= is often the payer’s MSISDN, not the merchant.
       const candidatePhones = Array.from(
         new Set([configuredPhone, extractedPhone].filter(Boolean)),
