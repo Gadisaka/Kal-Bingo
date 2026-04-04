@@ -888,6 +888,36 @@ export default function PlayingRoom() {
     return 0;
   }, [room, allRoomCartelas, navPlayerCount, spectatorRoomReady]);
 
+  /** Total selected cartelas in the room — same basis as Derash pot (stake × this). */
+  const selectedCartelasCount = useMemo(() => {
+    if (!spectatorRoomReady) return 0;
+
+    let n = Object.keys(allRoomCartelas).length;
+
+    if (n === 0) {
+      const cartelasObj =
+        room?.raw?.selectedCartelas || room?.selectedCartelas || {};
+      n = Object.keys(cartelasObj).length;
+    }
+
+    if (n === 0) {
+      n = navCartelasCount || 0;
+    }
+
+    if (n === 0) {
+      n = isSpectator ? 0 : playerCount || 1;
+    }
+
+    return n;
+  }, [
+    spectatorRoomReady,
+    allRoomCartelas,
+    room,
+    navCartelasCount,
+    isSpectator,
+    playerCount,
+  ]);
+
   const totalPrize = useMemo(() => {
     // In spectator mode, avoid fallback prize math until a live playing room is confirmed.
     if (!spectatorRoomReady) return 0;
@@ -896,42 +926,18 @@ export default function PlayingRoom() {
     const stake = Number(room?.stake || room?.betAmount || navStake || 0);
     if (stake === 0) return navPrize || 0; // Fallback if no stake available
 
-    // Primary: count from live socket data
-    let cartelasCount = Object.keys(allRoomCartelas).length;
-
-    // Secondary: room data
-    if (cartelasCount === 0) {
-      const cartelasObj =
-        room?.raw?.selectedCartelas || room?.selectedCartelas || {};
-      cartelasCount = Object.keys(cartelasObj).length;
-    }
-
-    // Tertiary: navigation state (initial load)
-    if (cartelasCount === 0) {
-      cartelasCount = navCartelasCount || 0;
-    }
-
-    // Final fallback to player count (do not force this for spectators)
-    if (cartelasCount === 0) {
-      cartelasCount = isSpectator ? 0 : playerCount || 1;
-    }
-
-    // Calculate pot and prize
-    const pot = stake * cartelasCount;
+    const pot = stake * selectedCartelasCount;
     const winCut = effectiveWinCutPercent;
     const prize = Math.max(0, pot - (pot * winCut) / 100);
 
     return prize;
   }, [
     room,
-    allRoomCartelas,
     navStake,
-    navCartelasCount,
     effectiveWinCutPercent,
     navPrize,
-    playerCount,
-    isSpectator,
     spectatorRoomReady,
+    selectedCartelasCount,
   ]);
 
   // Helper function to render winner card with called numbers (yellow) and winning pattern (green)
@@ -1130,7 +1136,7 @@ export default function PlayingRoom() {
         <div className="grid grid-cols-5 gap-1.5">
           {[
             { label: "Derash", value: Math.trunc(Number(totalPrize || 0)) },
-            { label: "Players", value: playerCount || 0 },
+            { label: "Players", value: selectedCartelasCount || 0 },
             {
               label: "Bet",
               value: Number(room?.stake || room?.betAmount || navStake || 0),

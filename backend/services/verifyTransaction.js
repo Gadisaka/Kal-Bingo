@@ -104,6 +104,188 @@ function extractApiMessage(payload) {
   );
 }
 
+/** Keys the upstream verify API may use for the credited account (receiver) name. */
+const RECEIVER_NAME_KEYS = [
+  "receiverName",
+  "recipientName",
+  "beneficiaryName",
+  "toName",
+  "payeeName",
+  "receiverFullName",
+  "creditAccountName",
+  "accountName",
+  "merchantName",
+];
+
+/** Keys the upstream verify API may use for the credited account phone. */
+const RECEIVER_PHONE_KEYS = [
+  "receiverPhone",
+  "recipientPhone",
+  "receiverPhoneNumber",
+  "phoneNumber",
+  "phone",
+  "toPhone",
+  "receiverMobile",
+  "mobileNumber",
+  "creditPhone",
+  "receiverMsisdn",
+];
+
+function pickFirstNonEmptyString(obj, keys) {
+  if (!obj || typeof obj !== "object") return "";
+  for (const key of keys) {
+    const v = obj[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "";
+}
+
+/**
+ * Collect receiver name/phone from a verify response (shape varies by provider/API version).
+ */
+function extractVerifiedReceiverInfo(nestedData, responseData) {
+  const buckets = [
+    nestedData,
+    responseData,
+    nestedData?.transaction,
+    responseData?.transaction,
+    nestedData?.data,
+    responseData?.data,
+    nestedData?.receiver,
+    responseData?.receiver,
+    nestedData?.recipient,
+    responseData?.recipient,
+    nestedData?.details,
+    responseData?.details,
+  ].filter((x) => x && typeof x === "object");
+
+  let name = "";
+  let phone = "";
+  for (const obj of buckets) {
+    if (!name) name = pickFirstNonEmptyString(obj, RECEIVER_NAME_KEYS);
+    if (!phone) phone = pickFirstNonEmptyString(obj, RECEIVER_PHONE_KEYS);
+    if (name && phone) break;
+  }
+
+  const nestedRx =
+    nestedData?.receiver ||
+    nestedData?.recipient ||
+    responseData?.receiver ||
+    responseData?.recipient;
+  if (nestedRx && typeof nestedRx === "object") {
+    if (!name && typeof nestedRx.name === "string" && nestedRx.name.trim()) {
+      name = nestedRx.name.trim();
+    }
+    if (!phone) {
+      phone =
+        pickFirstNonEmptyString(nestedRx, RECEIVER_PHONE_KEYS) ||
+        (typeof nestedRx.phone === "string" ? nestedRx.phone.trim() : "");
+    }
+  }
+
+  return { name, phone };
+}
+
+function firstNameToken(name) {
+  return String(name || "")
+    .trim()
+    .split(/\s+/)[0]
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+}
+
+/**
+ * Compare configured account full name to verified name using the first name (first word).
+ */
+function firstNameMatches(expectedFullName, verifiedName) {
+  const a = firstNameToken(expectedFullName);
+  const b = firstNameToken(verifiedName);
+  if (!a || !b) return false;
+  const al = a.toLowerCase();
+  const bl = b.toLowerCase();
+  return al === bl || bl.startsWith(al) || al.startsWith(bl);
+}
+
+/** Normalize to Ethiopia local 9 digits when possible (251…, 09…, or 9…). */
+function normalizeEtLocalNineDigits(input) {
+  const digits = String(input || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length >= 12 && digits.startsWith("251")) {
+    return digits.slice(-9);
+  }
+  if (digits.length === 10 && digits.startsWith("0")) {
+    return digits.slice(1);
+  }
+  if (digits.length === 9) {
+    return digits;
+  }
+  if (digits.length > 9) {
+    return digits.slice(-9);
+  }
+  return digits;
+}
+
+function receiverPhonesMatch(expectedPhone, verifiedPhone) {
+  const e = normalizeEtLocalNineDigits(expectedPhone);
+  const v = normalizeEtLocalNineDigits(verifiedPhone);
+  if (!e || !v) return false;
+  return e === v;
+}
+
+/**
+ * When the caller provides expected receiver details, ensure the verified transaction matches.
+ * @returns {{ ok: boolean, message?: string }}
+ */
+function validateReceiverAgainstPayload(payload, nestedData, responseData) {
+  const expectedName = String(payload.receiverName || "").trim();
+  const expectedPhone = String(
+    payload.receiverAccountNumber || payload.telebirrPhoneNumber || ""
+  ).trim();
+
+  if (!expectedName && !expectedPhone) {
+    return { ok: true };
+  }
+
+  const { name: verifiedName, phone: verifiedPhone } = extractVerifiedReceiverInfo(
+    nestedData,
+    responseData
+  );
+
+  if (expectedName) {
+    if (!verifiedName) {
+      return {
+        ok: false,
+        message:
+          "Could not confirm the receiver name for this transaction. Please contact support or try again with the full SMS.",
+      };
+    }
+    if (!firstNameMatches(expectedName, verifiedName)) {
+      return {
+        ok: false,
+        message: "This payment was not sent to the correct receiver account (name mismatch).",
+      };
+    }
+  }
+
+  if (expectedPhone) {
+    if (!verifiedPhone) {
+      return {
+        ok: false,
+        message:
+          "Could not confirm the receiver phone number for this transaction. Please contact support or try again with the full SMS.",
+      };
+    }
+    if (!receiverPhonesMatch(expectedPhone, verifiedPhone)) {
+      return {
+        ok: false,
+        message:
+          "This payment was not sent to the correct receiver account (phone number mismatch).",
+      };
+    }
+  }
+
+  return { ok: true };
+}
+
 /**
  * Verify a transaction from Telebirr or CBE Birr
  *
@@ -222,6 +404,21 @@ async function verifyTransaction(provider, payload) {
       return {
         success: false,
         message,
+        referenceId: transactionNumber,
+        data: responseData,
+        raw: responseData,
+      };
+    }
+
+    const receiverCheck = validateReceiverAgainstPayload(
+      payload,
+      nestedData,
+      responseData
+    );
+    if (!receiverCheck.ok) {
+      return {
+        success: false,
+        message: receiverCheck.message || "Receiver details do not match the configured deposit account",
         referenceId: transactionNumber,
         data: responseData,
         raw: responseData,
